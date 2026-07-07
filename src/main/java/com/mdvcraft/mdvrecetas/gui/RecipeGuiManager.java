@@ -25,6 +25,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.profile.PlayerProfile;
+import org.bukkit.profile.PlayerTextures;
 
 import java.lang.reflect.Field;
 import java.net.URL;
@@ -734,134 +736,64 @@ public final class RecipeGuiManager implements Listener {
         return button(Material.ARROW, name, lore);
     }
 
-    private void applyTexture(SkullMeta meta, String base64OrUrl) {
-        String textureHash = extractTextureHash(base64OrUrl);
-        String textureBase64 = normalizeTextureBase64(base64OrUrl, textureHash);
-        if (textureHash == null || textureHash.isBlank()) {
+    private void applyTexture(SkullMeta meta, String textureValue) {
+        if (meta == null || textureValue == null || textureValue.isBlank()) {
             return;
         }
-
-        if (applyBukkitProfileTexture(meta, textureHash)) {
+        String textureUrl = extractTextureUrl(textureValue.trim());
+        if (textureUrl == null || textureUrl.isBlank()) {
+            plugin.getLogger().warning("No se pudo aplicar textura custom de cabeza: textura invalida o Base64 sin URL.");
             return;
         }
-        if (textureBase64 != null && applyPaperProfileTexture(meta, textureBase64)) {
-            return;
-        }
-        if (textureBase64 != null) {
-            applyGameProfileTexture(meta, textureBase64);
-        }
-    }
-
-    private boolean applyBukkitProfileTexture(SkullMeta meta, String textureHash) {
         try {
-            Object profile;
-            try {
-                profile = Bukkit.class.getMethod("createPlayerProfile", UUID.class, String.class)
-                        .invoke(null, UUID.randomUUID(), "mdv_back");
-            } catch (NoSuchMethodException ignored) {
-                profile = Bukkit.class.getMethod("createProfile", UUID.class, String.class)
-                        .invoke(null, UUID.randomUUID(), "mdv_back");
-            }
-            Object textures = profile.getClass().getMethod("getTextures").invoke(profile);
-            textures.getClass().getMethod("setSkin", URL.class).invoke(textures, new URL("http://textures.minecraft.net/texture/" + textureHash));
-            profile.getClass().getMethod("setTextures", textures.getClass()).invoke(profile, textures);
-            for (java.lang.reflect.Method method : meta.getClass().getMethods()) {
-                if (!method.getName().equals("setOwnerProfile") || method.getParameterCount() != 1) {
-                    continue;
-                }
-                if (method.getParameterTypes()[0].isAssignableFrom(profile.getClass())) {
-                    method.invoke(meta, profile);
-                    return true;
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return false;
-    }
-
-    private boolean applyPaperProfileTexture(SkullMeta meta, String textureBase64) {
-        try {
-            Object profile = Bukkit.class.getMethod("createProfile", UUID.class, String.class)
-                    .invoke(null, UUID.randomUUID(), "mdv_back");
-            Class<?> propertyClass = Class.forName("com.destroystokyo.paper.profile.ProfileProperty");
-            Object property = propertyClass.getConstructor(String.class, String.class).newInstance("textures", textureBase64);
-            profile.getClass().getMethod("setProperty", propertyClass).invoke(profile, property);
-            for (java.lang.reflect.Method method : meta.getClass().getMethods()) {
-                if (!method.getName().equals("setPlayerProfile") || method.getParameterCount() != 1) {
-                    continue;
-                }
-                if (method.getParameterTypes()[0].isAssignableFrom(profile.getClass())) {
-                    method.invoke(meta, profile);
-                    return true;
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return false;
-    }
-
-    private void applyGameProfileTexture(SkullMeta meta, String textureBase64) {
-        try {
-            Class<?> gameProfileClass = Class.forName("com.mojang.authlib.GameProfile");
-            Class<?> propertyClass = Class.forName("com.mojang.authlib.properties.Property");
-            Object profile = gameProfileClass.getConstructor(UUID.class, String.class).newInstance(UUID.randomUUID(), "mdv_back");
-            Object property = propertyClass.getConstructor(String.class, String.class).newInstance("textures", textureBase64);
-            Object properties = gameProfileClass.getMethod("getProperties").invoke(profile);
-            properties.getClass().getMethod("put", Object.class, Object.class).invoke(properties, "textures", property);
-
-            Field field = null;
-            Class<?> current = meta.getClass();
-            while (current != null && field == null) {
-                for (Field candidate : current.getDeclaredFields()) {
-                    if (candidate.getName().equalsIgnoreCase("profile") || candidate.getType().getName().contains("GameProfile")) {
-                        field = candidate;
-                        break;
-                    }
-                }
-                current = current.getSuperclass();
-            }
-            if (field != null) {
-                field.setAccessible(true);
-                field.set(meta, profile);
-            }
-        } catch (Exception ignored) {
+            PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID(), "MDVRecetas");
+            PlayerTextures textures = profile.getTextures();
+            textures.setSkin(new URL(textureUrl));
+            profile.setTextures(textures);
+            meta.setOwnerProfile(profile);
+        } catch (Throwable ex) {
+            plugin.getLogger().warning("No se pudo aplicar textura custom de cabeza con API publica: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
         }
     }
 
-    private String normalizeTextureBase64(String raw, String textureHash) {
-        if (raw != null && !raw.isBlank()) {
-            try {
-                String decoded = new String(Base64.getDecoder().decode(raw), StandardCharsets.UTF_8);
-                if (decoded.contains("textures.minecraft.net/texture/")) {
-                    return raw;
-                }
-            } catch (IllegalArgumentException ignored) {
-            }
+    /**
+     * Misma estrategia que MDVSocial: acepta Base64 de Minecraft Heads o URL directa.
+     * En Paper/Purpur 1.21+ es mas seguro aplicar la URL con SkullMeta#setOwnerProfile
+     * que tocar GameProfile/campos internos por reflexion.
+     */
+    private String extractTextureUrl(String textureValue) {
+        if (textureValue == null) {
+            return "";
         }
-        if (textureHash == null || textureHash.isBlank()) {
-            return null;
+        String value = textureValue.trim();
+        if (value.isBlank()) {
+            return "";
         }
-        String json = "{\"textures\":{\"SKIN\":{\"url\":\"http://textures.minecraft.net/texture/" + textureHash + "\"}}}";
-        return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private String extractTextureHash(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        if (raw.contains("textures.minecraft.net/texture/")) {
-            int index = raw.indexOf("textures.minecraft.net/texture/") + "textures.minecraft.net/texture/".length();
-            return raw.substring(index).replaceAll("[^A-Za-z0-9]", "");
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+            return value;
         }
         try {
-            String decoded = new String(Base64.getDecoder().decode(raw), StandardCharsets.UTF_8);
-            Matcher matcher = Pattern.compile("textures\\.minecraft\\.net/texture/([A-Za-z0-9]+)").matcher(decoded);
-            if (matcher.find()) {
-                return matcher.group(1);
+            String decoded = new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+            int urlKey = decoded.indexOf("\"url\"");
+            if (urlKey < 0) {
+                return "";
             }
-        } catch (IllegalArgumentException ignored) {
+            int colon = decoded.indexOf(':', urlKey);
+            if (colon < 0) {
+                return "";
+            }
+            int firstQuote = decoded.indexOf('\"', colon);
+            if (firstQuote < 0) {
+                return "";
+            }
+            int secondQuote = decoded.indexOf('\"', firstQuote + 1);
+            if (secondQuote < 0) {
+                return "";
+            }
+            return decoded.substring(firstQuote + 1, secondQuote).replace("\\/", "/");
+        } catch (Throwable ignored) {
+            return "";
         }
-        return raw.replaceAll("[^A-Za-z0-9]", "");
     }
 
     private void fillAll(Inventory inventory, Material material, String name) {

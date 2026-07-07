@@ -104,6 +104,30 @@ public final class ItemResolver {
         return new RecipeChoice.ExactChoice(exact);
     }
 
+
+    /**
+     * Cooking recipes in Bukkit/Minecraft are much more reliable when their
+     * ingredient is registered by material. ExactChoice can make custom-NBT
+     * items start cooking but fail/reset at the end on some server builds.
+     *
+     * MDVRecetas still validates the real custom item in FurnaceSmeltEvent
+     * with matches(...), so this is only the material-level trigger that lets
+     * the furnace process run.
+     */
+    public RecipeChoice buildCookingChoice(ItemSpec spec) {
+        if (spec == null) {
+            return null;
+        }
+        if (spec.getKind() == ItemKind.VANILLA) {
+            return new RecipeChoice.MaterialChoice(spec.getMaterial());
+        }
+        ItemStack item = buildItem(spec);
+        if (item == null || item.getType().isAir()) {
+            return null;
+        }
+        return new RecipeChoice.MaterialChoice(item.getType());
+    }
+
     public boolean matches(ItemStack itemStack, ItemSpec spec) {
         if (itemStack == null || itemStack.getType().isAir() || spec == null) {
             return false;

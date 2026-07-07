@@ -1,81 +1,49 @@
-# MDVRecetas 0.3.1
+# MDVRecetas 0.3.3
 
-Motor de recetas custom para MDVCRAFT + guía visual tipo Terraria.
+Hotfix sobre 0.3.2.
 
-## Incluye
+## Cambios
 
-- Carga de recetas desde `plugins/MDVRecetas/recipes/*.yml`.
-- Registro de recetas Bukkit/Paper.
-- Soporte para:
-  - Mesa de crafteo (`SHAPED` y `SHAPELESS`).
-  - Horno.
-  - Alto horno.
-  - Ahumador.
-  - Hoguera.
-- Ingredientes/resultados:
-  - `VANILLA`.
-  - `MMOITEMS`.
-  - `ITEMSTACK` serializado en Base64.
-- Reemplazo de recetas vanilla.
-- XP para profesión `forjador` de MMOCore.
-- Holograma flotante de XP.
-- `/mdvrecetas` abre la guía visual.
-- Menú principal con categorías y buscador.
-- Visualizador de categorías con paginación.
-- Vista completa de receta con estación visible.
-- Buscador por ingrediente tipo Terraria.
-- Ingredientes clickeables: si un ingrediente tiene receta visible, abre esa receta.
-- `hidden: true` / `hide: true` para recetas que se pueden craftear pero no se muestran en la guía.
+- Boton `Volver` usa la misma estrategia de texturas que MDVSocial:
+  - acepta Base64 de Minecraft Heads
+  - extrae la URL real
+  - aplica la textura con `SkullMeta#setOwnerProfile`
+  - evita refleccion/campos internos en Paper/Purpur 1.21+
 
-## Cambios 0.3.1
+- Recetas de horno custom con MMOItems corregidas:
+  - el horno sigue registrando la receta por material base para que pueda cocinar
+  - al terminar, MDVRecetas valida el ItemStack real dentro del horno, no solo `FurnaceSmeltEvent#getSource()`
+  - esto evita el bug donde la barra llega al final, se reinicia y no entrega resultado
+  - si alguien intenta cocinar un item vanilla con el mismo material base que un ingrediente custom, se cancela para no regalar resultados custom
 
-- Eliminados los botones `Cerrar` de las GUIs; ahora solo queda `Volver`.
-- Botón `Volver` reforzado para usar la cabeza con textura custom de la config.
-- Menú de categoría sin cartel de información extra.
-- El título del menú de categoría ahora usa `Recetas %category%`.
-- Segunda fila de categorías movida un slot a la derecha.
-- La vista de receta ya no agrega lore extra a ingredientes ni resultado.
-- La XP, categoría, tipo y estación se muestran en el bloque de estación del centro.
-- La navegación del buscador recuerda correctamente de dónde venías al entrar a recetas de ingredientes.
-- Las recetas de horno/alto horno/ahumador fuerzan el resultado custom en `FurnaceSmeltEvent` para evitar que la cocción se reinicie sin producir item.
+## Receta de horno ejemplo
 
-## Comandos
-
-```text
-/mdvrecetas
-/mdvrecetas reload
-/mdvrecetas debugitem
-/mdvrecetas serializehand <id>
-```
-
-## Receta oculta
-
-```yaml
+```yml
 recipes:
-  receta_secreta:
+  hierro_orco_refinado:
     enabled: true
-    hidden: true
-    station: CRAFTING_TABLE
-    category: UTILITARIOS
-    type: SHAPELESS
-    ingredients:
-      item:
-        kind: VANILLA
-        material: DIAMOND
+    station: FURNACE
+    category: MATERIALES
+    hidden: false
+    type: COOKING
+
+    ingredient:
+      kind: MMOITEMS
+      type: MATERIAL
+      id: LINGOTEORCO
+
     result:
-      kind: VANILLA
-      material: EMERALD
+      kind: MMOITEMS
+      type: MATERIAL
+      id: HIERROORCO
       amount: 1
+
+    cooking:
+      time: 200
+      vanilla-exp: 0.2
+
+    forjador:
+      exp: 50
 ```
 
-La receta seguirá funcionando en la mesa/horno correspondiente, pero no aparecerá en `/mdvrecetas`, ni en categorías, ni en el buscador.
-
-## Flujo recomendado de prueba
-
-1. Borra `plugins/MDVRecetas/` si estás probando desde cero.
-2. Compila el jar.
-3. Sube el jar al servidor.
-4. Reinicia.
-5. Activa una receta de ejemplo.
-6. Usa `/mdvrecetas reload`.
-7. Prueba `/mdvrecetas`, categorías, vista de receta y buscador.
+`forjador.exp: 50` sirve para testeo, pero para balance real conviene bajarlo.

@@ -178,6 +178,23 @@ public final class MdvRecipeManager {
         return Optional.empty();
     }
 
+    public boolean hasCookingRecipeWithInputMaterial(Block block, ItemStack source) {
+        StationType station = stationFromBlock(block == null ? null : block.getType());
+        if (station == null || source == null || source.getType().isAir()) {
+            return false;
+        }
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (recipe.getType() != RecipeType.COOKING || recipe.getStation() != station) {
+                continue;
+            }
+            ItemStack expected = itemResolver.buildItem(recipe.getCookingIngredient());
+            if (expected != null && !expected.getType().isAir() && expected.getType() == source.getType()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public Optional<MdvRecipe> findCookingRecipe(Block block, ItemStack source, ItemStack result) {
         Optional<MdvRecipe> match = findCookingRecipe(block, source);
         if (match.isEmpty()) {
@@ -285,7 +302,7 @@ public final class MdvRecipeManager {
     }
 
     private Recipe buildCookingRecipe(MdvRecipe recipe, ItemStack result) {
-        RecipeChoice choice = itemResolver.buildChoice(recipe.getCookingIngredient());
+        RecipeChoice choice = itemResolver.buildCookingChoice(recipe.getCookingIngredient());
         if (choice == null) {
             throw new IllegalArgumentException("Could not build cooking ingredient choice");
         }
