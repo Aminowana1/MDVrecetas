@@ -45,15 +45,28 @@ public final class RecipeSignatureService {
             pdc.set(creatorNameKey, PersistentDataType.STRING, player.getName());
             pdc.set(recipeIdKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
 
-            String line = plugin.getConfig().getString("signature.lore-line", "&l&aForjado por: &e%player%");
-            line = ColorUtil.color(line.replace("%player%", player.getName()).replace("%recipe%", recipeId == null ? "" : recipeId));
-
             List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
-            lore.add(line);
+            for (String rawLine : signatureLines(player, recipeId)) {
+                lore.add(rawLine);
+            }
             meta.setLore(lore);
         }
 
         item.setItemMeta(meta);
         return item;
     }
+    private List<String> signatureLines(Player player, String recipeId) {
+        List<String> rawLines = plugin.getConfig().getStringList("signature.lore-lines");
+        if (rawLines == null || rawLines.isEmpty()) {
+            rawLines = List.of(plugin.getConfig().getString("signature.lore-line", "&l&aForjado por: &e%player%"));
+        }
+        List<String> lines = new ArrayList<>();
+        for (String raw : rawLines) {
+            String line = raw == null ? "" : raw;
+            line = line.replace("%player%", player.getName()).replace("%recipe%", recipeId == null ? "" : recipeId);
+            lines.add(ColorUtil.color(line));
+        }
+        return lines;
+    }
+
 }

@@ -3,6 +3,7 @@ package com.mdvcraft.mdvrecetas.listener;
 import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
 import com.mdvcraft.mdvrecetas.service.RecipeSignatureService;
+import com.mdvcraft.mdvrecetas.service.ForjadorModifierService;
 import org.bukkit.Keyed;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -18,11 +19,13 @@ public final class RecipeCraftListener implements Listener {
     private final MDVRecetasPlugin plugin;
     private final ForjadorXpService xpService;
     private final RecipeSignatureService signatureService;
+    private final ForjadorModifierService modifierService;
 
-    public RecipeCraftListener(MDVRecetasPlugin plugin, ForjadorXpService xpService, RecipeSignatureService signatureService) {
+    public RecipeCraftListener(MDVRecetasPlugin plugin, ForjadorXpService xpService, RecipeSignatureService signatureService, ForjadorModifierService modifierService) {
         this.plugin = plugin;
         this.xpService = xpService;
         this.signatureService = signatureService;
+        this.modifierService = modifierService;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -37,17 +40,18 @@ public final class RecipeCraftListener implements Listener {
         }
 
         plugin.getRecipeManager().getByKey(keyed.getKey()).ifPresent(mdvRecipe -> {
-            if (mdvRecipe.getForjador().isSignature()) {
-                ItemStack current = event.getCurrentItem();
-                if (current == null || current.getType().isAir()) {
-                    current = recipe.getResult();
+            ItemStack current = event.getCurrentItem();
+            if (current == null || current.getType().isAir()) {
+                current = recipe.getResult();
+            }
+            if (current != null && !current.getType().isAir()) {
+                ItemStack finalResult = modifierService.applyModifierIfNeeded(current, player, mdvRecipe);
+                if (mdvRecipe.getForjador().isSignature()) {
+                    finalResult = signatureService.applySignature(finalResult, player, mdvRecipe.getId());
                 }
-                if (current != null && !current.getType().isAir()) {
-                    ItemStack signed = signatureService.applySignature(current, player, mdvRecipe.getId());
-                    event.setCurrentItem(signed);
-                    if (event.getInventory() instanceof CraftingInventory craftingInventory) {
-                        craftingInventory.setResult(signed.clone());
-                    }
+                event.setCurrentItem(finalResult);
+                if (event.getInventory() instanceof CraftingInventory craftingInventory) {
+                    craftingInventory.setResult(finalResult.clone());
                 }
             }
 

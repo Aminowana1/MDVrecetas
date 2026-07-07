@@ -4,6 +4,7 @@ import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
 import com.mdvcraft.mdvrecetas.model.MdvRecipe;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
 import com.mdvcraft.mdvrecetas.service.RecipeSignatureService;
+import com.mdvcraft.mdvrecetas.service.ForjadorModifierService;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -32,6 +33,7 @@ public final class CookingXpListener implements Listener {
     private final MDVRecetasPlugin plugin;
     private final ForjadorXpService xpService;
     private final RecipeSignatureService signatureService;
+    private final ForjadorModifierService modifierService;
 
     /**
      * Receta custom detectada cuando el horno empieza a cocinar.
@@ -53,10 +55,11 @@ public final class CookingXpListener implements Listener {
      */
     private final Map<String, PendingCookingXp> pendingXp = new HashMap<>();
 
-    public CookingXpListener(MDVRecetasPlugin plugin, ForjadorXpService xpService, RecipeSignatureService signatureService) {
+    public CookingXpListener(MDVRecetasPlugin plugin, ForjadorXpService xpService, RecipeSignatureService signatureService, ForjadorModifierService modifierService) {
         this.plugin = plugin;
         this.xpService = xpService;
         this.signatureService = signatureService;
+        this.modifierService = modifierService;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -147,7 +150,7 @@ public final class CookingXpListener implements Listener {
         }
 
         MdvRecipe recipe = plugin.getRecipeManager().getByKey(pending.recipeKey()).orElse(null);
-        if (recipe == null || recipe.getForjador() == null || !recipe.getForjador().isSignature()) {
+        if (recipe == null || recipe.getForjador() == null) {
             return;
         }
 
@@ -156,9 +159,12 @@ public final class CookingXpListener implements Listener {
             return;
         }
 
-        ItemStack signed = signatureService.applySignature(result, player, recipe.getId());
-        top.setItem(2, signed);
-        event.setCurrentItem(signed.clone());
+        ItemStack finalResult = modifierService.applyModifierIfNeeded(result, player, recipe);
+        if (recipe.getForjador().isSignature()) {
+            finalResult = signatureService.applySignature(finalResult, player, recipe.getId());
+        }
+        top.setItem(2, finalResult);
+        event.setCurrentItem(finalResult.clone());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

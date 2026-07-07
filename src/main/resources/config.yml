@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVRecetas 0.5.0
+# MDVRecetas 0.6.0
 # Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
@@ -26,7 +26,113 @@ forjador:
 
 signature:
   enabled: true
-  lore-line: '&l&aForjado por: &e%player%'
+  # Compatibilidad vieja: lore-line sigue funcionando si lore-lines no existe.
+  lore-line: '&a &7🔨 &l&aForjado por: &e%player%'
+  lore-lines:
+    - ''
+    - '&a &7🔨 &l&aForjado por: &e%player%'
+
+
+# ==========================================================
+# Modificadores por Forjador
+#
+# MDVRecetas NO usa las probabilidades internas de MMOItems.
+# Solo toma la lista de modificadores que el item acepta y luego
+# elige uno usando estas calidades y el nivel de Forjador.
+#
+# Para activar en una receta:
+# forjador:
+#   modifiers: true
+#
+# Bloqueados: nunca salen por crafteo normal.
+# ==========================================================
+forjador-modifiers:
+  enabled: true
+
+  level:
+    min: 1
+    max: 50
+    # Requiere PlaceholderAPI + MMOCore expansion/placeholders funcionando.
+    # Si no puede leerlo, usa nivel 1.
+    placeholder: '%mmocore_profession_level_forjador%'
+
+  chances:
+    # Nivel 1: muchas chances de malo/normal, poco bueno.
+    level-1:
+      bad: 40
+      normal: 50
+      good: 9
+      very-good: 1
+
+    # Nivel 50: sigue sin garantizar perfecto, pero mejora mucho.
+    level-50:
+      bad: 5
+      normal: 45
+      good: 35
+      very-good: 15
+
+  # Si un modificador existe en el item pero no está en ninguna lista,
+  # por defecto NO sale. Puedes poner normal/bad/good/very-good si quieres.
+  unclassified-as: none
+
+  # Además de IDs exactos bloqueados, cualquier ID que contenga estas palabras se bloquea.
+  blocked-contains:
+    - reliquia
+    - simbionte
+
+  default-weight:
+    bad: 1
+    normal: 1
+    good: 1
+    very-good: 1
+
+  # Pesos opcionales por modificador concreto. Si no aparece aquí, usa default-weight.
+  weights: {}
+
+  qualities:
+    bad:
+      - t1_tanque_oxidado
+      - t1_tanque_abollado
+      - t1_tanque_gastado
+      - t1_rango_torcido
+      - t1_rango_mal_ajustado
+      - t1_rango_gastado
+      - t1_mago_apagado
+      - t1_mago_inestable
+      - t1_mago_gastado
+      - t1_picaro_torpe
+      - t1_picaro_descuidado
+      - t1_picaro_gastado
+      - arma_t1_mellada
+      - arma_t1_desgastada
+      - arma_t1_tosca
+
+    normal:
+      - t1_normal
+      - arma_t1_normal
+
+    good:
+      - t1_tanque_pulido
+      - t1_tanque_resistente
+      - t1_rango_estable
+      - t1_rango_certero
+      - t1_mago_afinado
+      - t1_mago_canalizador
+      - t1_picaro_agil
+      - t1_picaro_preciso
+      - arma_t1_afilada
+      - arma_t1_ligera
+
+    very-good:
+      - t1_tanque_reforzado
+      - t1_rango_preciso
+      - t1_mago_imbuido
+      - t1_picaro_letal
+      - arma_t1_reforzada
+
+    blocked:
+      - reliquia
+      - simbionte
 
 gui:
   main-back-command: 'mdvsocial'

@@ -17,6 +17,7 @@ public final class EditorSession {
     private float vanillaExp = 0.0F;
     private double forjadorExp = 0.0D;
     private boolean signature = false;
+    private boolean modifiers = false;
     private String customRecipeId;
     private String editingRecipeId;
     private MdvRecipe originalRecipe;
@@ -91,6 +92,14 @@ public final class EditorSession {
         this.signature = signature;
     }
 
+    public boolean isModifiers() {
+        return modifiers;
+    }
+
+    public void setModifiers(boolean modifiers) {
+        this.modifiers = modifiers;
+    }
+
     public String getCustomRecipeId() {
         return customRecipeId;
     }
@@ -157,6 +166,7 @@ public final class EditorSession {
         this.vanillaExp = 0.0F;
         this.forjadorExp = 0.0D;
         this.signature = false;
+        this.modifiers = false;
         this.replaceVanilla = false;
         this.vanillaKey = "";
         this.customRecipeId = null;

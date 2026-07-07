@@ -1,0 +1,524 @@
+package com.mdvcraft.mdvrecetas.service;
+
+import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
+import com.mdvcraft.mdvrecetas.model.ItemKind;
+import com.mdvcraft.mdvrecetas.model.ItemSpec;
+import com.mdvcraft.mdvrecetas.model.MdvRecipe;
+import org.bukkit.Bukkit;
+import org.bukkit.NamespacedKey;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+
+public final class ForjadorModifierService {
+    private final MDVRecetasPlugin plugin;
+    private final Random random = new Random();
+    private final NamespacedKey modifierAppliedKey;
+    private final NamespacedKey modifierIdKey;
+    private final NamespacedKey modifierQualityKey;
+    private final NamespacedKey modifierRecipeKey;
+
+    public ForjadorModifierService(MDVRecetasPlugin plugin) {
+        this.plugin = plugin;
+        this.modifierAppliedKey = new NamespacedKey(plugin, "forjador_modifier_applied");
+        this.modifierIdKey = new NamespacedKey(plugin, "forjador_modifier_id");
+        this.modifierQualityKey = new NamespacedKey(plugin, "forjador_modifier_quality");
+        this.modifierRecipeKey = new NamespacedKey(plugin, "forjador_modifier_recipe");
+    }
+
+    public ItemStack applyModifierIfNeeded(ItemStack original, Player player, MdvRecipe recipe) {
+        if (original == null || original.getType().isAir() || player == null || recipe == null || recipe.getForjador() == null) {
+            return original;
+        }
+        if (!plugin.getConfig().getBoolean("forjador-modifiers.enabled", true)) {
+            return original;
+        }
+        if (!recipe.getForjador().isModifiers()) {
+            return original;
+        }
+        ItemSpec resultSpec = recipe.getResult();
+        if (resultSpec == null || resultSpec.getKind() != ItemKind.MMOITEMS) {
+            return original;
+        }
+        if (hasAlreadyRolled(original)) {
+            return original;
+        }
+
+        int level = readForjadorLevel(player);
+        Optional<SelectedModifier> selected = selectModifier(resultSpec, level, recipe.getForjador().getModifierPool());
+        if (selected.isEmpty()) {
+            return markAsRolled(original.clone(), "none", ModifierQuality.NONE, recipe.getId());
+        }
+
+        ItemStack modified = buildMmoItemWithModifier(resultSpec, selected.get());
+        if (modified == null || modified.getType().isAir()) {
+            plugin.getLogger().warning("Could not apply MMOItems modifier '" + selected.get().id() + "' to "
+                    + resultSpec.getMmoType() + ":" + resultSpec.getMmoId() + ". Using original item.");
+            return markAsRolled(original.clone(), "failed:" + selected.get().id(), selected.get().quality(), recipe.getId());
+        }
+        modified.setAmount(Math.max(1, original.getAmount()));
+        return markAsRolled(modified, selected.get().id(), selected.get().quality(), recipe.getId());
+    }
+
+    private Optional<SelectedModifier> selectModifier(ItemSpec resultSpec, int level, String configuredPool) {
+        Map<String, Object> candidates = loadCandidateModifierNodes(resultSpec, configuredPool);
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<ModifierQuality, List<ModifierCandidate>> byQuality = classifyCandidates(candidates);
+        if (byQuality.values().stream().allMatch(List::isEmpty)) {
+            return Optional.empty();
+        }
+
+        ModifierQuality rolled = rollQuality(level);
+        for (ModifierQuality quality : fallbackQualities(rolled)) {
+            List<ModifierCandidate> list = byQuality.getOrDefault(quality, List.of());
+            if (!list.isEmpty()) {
+                ModifierCandidate candidate = weightedPick(list);
+                return Optional.of(new SelectedModifier(candidate.id(), quality, candidate.node()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Map<String, Object> loadCandidateModifierNodes(ItemSpec resultSpec, String configuredPool) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        try {
+            Object pluginInstance = getMmoItemsPlugin();
+            if (pluginInstance == null) {
+                return result;
+            }
+            Object type = getMmoType(pluginInstance, resultSpec.getMmoType());
+            if (type == null) {
+                return result;
+            }
+            Object templates = invokeNoArgs(pluginInstance, "getTemplates");
+            if (templates == null) {
+                return result;
+            }
+
+            if (configuredPool != null && !configuredPool.isBlank()) {
+                Object node = invokeOneString(templates, "getModifierNode", configuredPool.toLowerCase(Locale.ROOT));
+                if (node == null) {
+                    node = invokeOneString(templates, "getModifierNode", configuredPool.toUpperCase(Locale.ROOT));
+                }
+                collectLeafNodes(node, result, new HashSet<>());
+            }
+
+            Object template = invokeTemplateGetter(templates, type, resultSpec.getMmoId());
+            if (template != null) {
+                Object hasGroup = invokeNoArgs(template, "hasModifierGroup");
+                if (hasGroup instanceof Boolean && (Boolean) hasGroup) {
+                    Object group = invokeNoArgs(template, "getModifierGroup");
+                    collectLeafNodes(group, result, new HashSet<>());
+                }
+                Object modifiers = invokeNoArgs(template, "getModifiers");
+                if (modifiers instanceof Map<?, ?> map) {
+                    for (Object value : map.values()) {
+                        collectLeafNodes(value, result, new HashSet<>());
+                    }
+                }
+            }
+        } catch (Throwable exception) {
+            plugin.getLogger().warning("Could not read MMOItems modifier candidates: " + exception.getMessage());
+        }
+        return result;
+    }
+
+    private void collectLeafNodes(Object node, Map<String, Object> out, Set<Object> visited) {
+        if (node == null || visited.contains(node)) {
+            return;
+        }
+        visited.add(node);
+        String id = readNodeId(node);
+        List<?> children = readChildren(node);
+        if (children == null || children.isEmpty()) {
+            if (id != null && !id.isBlank()) {
+                out.putIfAbsent(normalize(id), node);
+            }
+            return;
+        }
+        for (Object child : children) {
+            collectLeafNodes(child, out, visited);
+        }
+    }
+
+    private Map<ModifierQuality, List<ModifierCandidate>> classifyCandidates(Map<String, Object> candidates) {
+        Map<ModifierQuality, List<ModifierCandidate>> result = new EnumMap<>(ModifierQuality.class);
+        for (ModifierQuality quality : ModifierQuality.rollableValues()) {
+            result.put(quality, new ArrayList<>());
+        }
+
+        Set<String> blockedExact = configuredIds("forjador-modifiers.qualities.blocked");
+        List<String> blockedContains = configuredContains("forjador-modifiers.blocked-contains");
+
+        for (Map.Entry<String, Object> entry : candidates.entrySet()) {
+            String id = normalize(entry.getKey());
+            if (isBlocked(id, blockedExact, blockedContains)) {
+                continue;
+            }
+            ModifierQuality quality = configuredQualityOf(id);
+            if (!quality.isRollable()) {
+                continue;
+            }
+            double weight = configuredWeight(id, quality);
+            result.get(quality).add(new ModifierCandidate(id, quality, entry.getValue(), weight));
+        }
+        return result;
+    }
+
+    private ModifierQuality configuredQualityOf(String id) {
+        for (ModifierQuality quality : ModifierQuality.rollableValues()) {
+            if (configuredIds("forjador-modifiers.qualities." + quality.configKey()).contains(id)) {
+                return quality;
+            }
+        }
+        String fallback = plugin.getConfig().getString("forjador-modifiers.unclassified-as", "none");
+        return ModifierQuality.fromConfig(fallback);
+    }
+
+    private Set<String> configuredIds(String path) {
+        Set<String> values = new LinkedHashSet<>();
+        for (String value : plugin.getConfig().getStringList(path)) {
+            if (value != null && !value.isBlank()) {
+                values.add(normalize(value));
+            }
+        }
+        return values;
+    }
+
+    private List<String> configuredContains(String path) {
+        List<String> values = new ArrayList<>();
+        for (String value : plugin.getConfig().getStringList(path)) {
+            if (value != null && !value.isBlank()) {
+                values.add(normalize(value));
+            }
+        }
+        return values;
+    }
+
+    private boolean isBlocked(String id, Set<String> blockedExact, List<String> blockedContains) {
+        if (blockedExact.contains(id)) {
+            return true;
+        }
+        for (String blocked : blockedContains) {
+            if (!blocked.isBlank() && id.contains(blocked)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private double configuredWeight(String id, ModifierQuality quality) {
+        String direct = "forjador-modifiers.weights." + id;
+        if (plugin.getConfig().isDouble(direct) || plugin.getConfig().isInt(direct)) {
+            return Math.max(0.0001D, plugin.getConfig().getDouble(direct));
+        }
+        return Math.max(0.0001D, plugin.getConfig().getDouble("forjador-modifiers.default-weight." + quality.configKey(), 1.0D));
+    }
+
+    private ModifierCandidate weightedPick(List<ModifierCandidate> candidates) {
+        double total = 0.0D;
+        for (ModifierCandidate candidate : candidates) {
+            total += Math.max(0.0001D, candidate.weight());
+        }
+        double roll = random.nextDouble() * total;
+        double cursor = 0.0D;
+        for (ModifierCandidate candidate : candidates) {
+            cursor += Math.max(0.0001D, candidate.weight());
+            if (roll <= cursor) {
+                return candidate;
+            }
+        }
+        return candidates.get(candidates.size() - 1);
+    }
+
+    private ModifierQuality rollQuality(int level) {
+        int min = plugin.getConfig().getInt("forjador-modifiers.level.min", 1);
+        int max = plugin.getConfig().getInt("forjador-modifiers.level.max", 50);
+        double t = max <= min ? 1.0D : (Math.max(min, Math.min(max, level)) - min) / (double) (max - min);
+
+        Map<ModifierQuality, Double> low = readChancePoint("forjador-modifiers.chances.level-1");
+        Map<ModifierQuality, Double> high = readChancePoint("forjador-modifiers.chances.level-50");
+        double total = 0.0D;
+        Map<ModifierQuality, Double> interpolated = new EnumMap<>(ModifierQuality.class);
+        for (ModifierQuality quality : ModifierQuality.rollableValues()) {
+            double value = low.getOrDefault(quality, 0.0D) + (high.getOrDefault(quality, 0.0D) - low.getOrDefault(quality, 0.0D)) * t;
+            value = Math.max(0.0D, value);
+            interpolated.put(quality, value);
+            total += value;
+        }
+        if (total <= 0.0D) {
+            return ModifierQuality.NORMAL;
+        }
+        double roll = random.nextDouble() * total;
+        double cursor = 0.0D;
+        for (ModifierQuality quality : new ModifierQuality[]{ModifierQuality.BAD, ModifierQuality.NORMAL, ModifierQuality.GOOD, ModifierQuality.VERY_GOOD}) {
+            cursor += interpolated.getOrDefault(quality, 0.0D);
+            if (roll <= cursor) {
+                return quality;
+            }
+        }
+        return ModifierQuality.NORMAL;
+    }
+
+    private Map<ModifierQuality, Double> readChancePoint(String path) {
+        Map<ModifierQuality, Double> values = new EnumMap<>(ModifierQuality.class);
+        for (ModifierQuality quality : ModifierQuality.rollableValues()) {
+            values.put(quality, plugin.getConfig().getDouble(path + "." + quality.configKey(), defaultChance(path, quality)));
+        }
+        return values;
+    }
+
+    private double defaultChance(String path, ModifierQuality quality) {
+        boolean high = path.endsWith("level-50");
+        return switch (quality) {
+            case BAD -> high ? 5.0D : 40.0D;
+            case NORMAL -> high ? 45.0D : 50.0D;
+            case GOOD -> high ? 35.0D : 9.0D;
+            case VERY_GOOD -> high ? 15.0D : 1.0D;
+            default -> 0.0D;
+        };
+    }
+
+    private List<ModifierQuality> fallbackQualities(ModifierQuality rolled) {
+        return switch (rolled) {
+            case VERY_GOOD -> List.of(ModifierQuality.VERY_GOOD, ModifierQuality.GOOD, ModifierQuality.NORMAL, ModifierQuality.BAD);
+            case GOOD -> List.of(ModifierQuality.GOOD, ModifierQuality.NORMAL, ModifierQuality.VERY_GOOD, ModifierQuality.BAD);
+            case NORMAL -> List.of(ModifierQuality.NORMAL, ModifierQuality.GOOD, ModifierQuality.BAD, ModifierQuality.VERY_GOOD);
+            case BAD -> List.of(ModifierQuality.BAD, ModifierQuality.NORMAL, ModifierQuality.GOOD, ModifierQuality.VERY_GOOD);
+            default -> List.of(ModifierQuality.NORMAL, ModifierQuality.BAD, ModifierQuality.GOOD, ModifierQuality.VERY_GOOD);
+        };
+    }
+
+    private ItemStack buildMmoItemWithModifier(ItemSpec spec, SelectedModifier selected) {
+        try {
+            Object pluginInstance = getMmoItemsPlugin();
+            if (pluginInstance == null) {
+                return null;
+            }
+            Object type = getMmoType(pluginInstance, spec.getMmoType());
+            if (type == null) {
+                return null;
+            }
+            Object templates = invokeNoArgs(pluginInstance, "getTemplates");
+            Object template = invokeTemplateGetter(templates, type, spec.getMmoId());
+            if (template == null) {
+                return null;
+            }
+
+            Class<?> builderClass = Class.forName("net.Indyuce.mmoitems.api.item.build.MMOItemBuilder");
+            Class<?> templateClass = Class.forName("net.Indyuce.mmoitems.api.item.template.MMOItemTemplate");
+            Class<?> tierClass = Class.forName("net.Indyuce.mmoitems.api.ItemTier");
+            Constructor<?> constructor = builderClass.getConstructor(templateClass, int.class, tierClass, boolean.class);
+            Object builder = constructor.newInstance(template, 0, null, true);
+
+            Method whenCollected = selected.node().getClass().getMethod("whenCollected", builderClass, UUID.class);
+            whenCollected.invoke(selected.node(), builder, UUID.randomUUID());
+
+            Object mmoItem = builderClass.getMethod("build").invoke(builder);
+            Object stackBuilder = mmoItem.getClass().getMethod("newBuilder").invoke(mmoItem);
+            Object stack = stackBuilder.getClass().getMethod("build").invoke(stackBuilder);
+            return stack instanceof ItemStack ? (ItemStack) stack : null;
+        } catch (Throwable exception) {
+            plugin.getLogger().warning("Could not build modified MMOItem: " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private int readForjadorLevel(Player player) {
+        String placeholder = plugin.getConfig().getString("forjador-modifiers.level.placeholder", "%mmocore_profession_level_forjador%");
+        if (placeholder == null || placeholder.isBlank()) {
+            return 1;
+        }
+        try {
+            if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                Class<?> papi = Class.forName("me.clip.placeholderapi.PlaceholderAPI");
+                Method setPlaceholders = papi.getMethod("setPlaceholders", Player.class, String.class);
+                Object parsed = setPlaceholders.invoke(null, player, placeholder);
+                return parseLevel(String.valueOf(parsed));
+            }
+        } catch (Throwable ignored) {
+        }
+        return 1;
+    }
+
+    private int parseLevel(String raw) {
+        if (raw == null) {
+            return 1;
+        }
+        String cleaned = raw.replaceAll("[^0-9]", "");
+        if (cleaned.isBlank()) {
+            return 1;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(cleaned));
+        } catch (NumberFormatException exception) {
+            return 1;
+        }
+    }
+
+    private boolean hasAlreadyRolled(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return true;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return false;
+        }
+        return meta.getPersistentDataContainer().has(modifierAppliedKey, PersistentDataType.BYTE);
+    }
+
+    private ItemStack markAsRolled(ItemStack item, String modifierId, ModifierQuality quality, String recipeId) {
+        if (item == null || item.getType().isAir()) {
+            return item;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        pdc.set(modifierAppliedKey, PersistentDataType.BYTE, (byte) 1);
+        pdc.set(modifierIdKey, PersistentDataType.STRING, modifierId == null ? "" : modifierId);
+        pdc.set(modifierQualityKey, PersistentDataType.STRING, quality == null ? "none" : quality.configKey());
+        pdc.set(modifierRecipeKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private Object getMmoItemsPlugin() throws ReflectiveOperationException {
+        Class<?> mmoItemsClass = Class.forName("net.Indyuce.mmoitems.MMOItems");
+        Field field = mmoItemsClass.getField("plugin");
+        return field.get(null);
+    }
+
+    private Object getMmoType(Object pluginInstance, String typeId) throws ReflectiveOperationException {
+        Object types = invokeNoArgs(pluginInstance, "getTypes");
+        if (types == null) {
+            return null;
+        }
+        return invokeOneString(types, "get", typeId == null ? "" : typeId.toUpperCase(Locale.ROOT));
+    }
+
+    private Object invokeTemplateGetter(Object templates, Object type, String itemId) throws ReflectiveOperationException {
+        if (templates == null || type == null || itemId == null) {
+            return null;
+        }
+        for (Method method : templates.getClass().getMethods()) {
+            if (!method.getName().equals("getTemplate") || method.getParameterCount() != 2) {
+                continue;
+            }
+            Class<?>[] params = method.getParameterTypes();
+            if (params[0].isInstance(type) && params[1].equals(String.class)) {
+                return method.invoke(templates, type, itemId.toUpperCase(Locale.ROOT));
+            }
+        }
+        return null;
+    }
+
+    private Object invokeNoArgs(Object target, String methodName) throws ReflectiveOperationException {
+        if (target == null) {
+            return null;
+        }
+        Method method = target.getClass().getMethod(methodName);
+        return method.invoke(target);
+    }
+
+    private Object invokeOneString(Object target, String methodName, String value) throws ReflectiveOperationException {
+        if (target == null) {
+            return null;
+        }
+        Method method = target.getClass().getMethod(methodName, String.class);
+        return method.invoke(target, value);
+    }
+
+    private String readNodeId(Object node) {
+        try {
+            Object id = node.getClass().getMethod("getId").invoke(node);
+            return id == null ? null : String.valueOf(id);
+        } catch (Throwable exception) {
+            return null;
+        }
+    }
+
+    private List<?> readChildren(Object node) {
+        try {
+            Object children = node.getClass().getMethod("getChildren").invoke(node);
+            if (children instanceof List<?> list) {
+                return list;
+            }
+            return Collections.emptyList();
+        } catch (Throwable exception) {
+            return Collections.emptyList();
+        }
+    }
+
+    private String normalize(String raw) {
+        return raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private enum ModifierQuality {
+        BAD("bad"),
+        NORMAL("normal"),
+        GOOD("good"),
+        VERY_GOOD("very-good"),
+        BLOCKED("blocked"),
+        NONE("none");
+
+        private final String configKey;
+
+        ModifierQuality(String configKey) {
+            this.configKey = configKey;
+        }
+
+        public String configKey() {
+            return configKey;
+        }
+
+        public boolean isRollable() {
+            return this == BAD || this == NORMAL || this == GOOD || this == VERY_GOOD;
+        }
+
+        public static List<ModifierQuality> rollableValues() {
+            return List.of(BAD, NORMAL, GOOD, VERY_GOOD);
+        }
+
+        public static ModifierQuality fromConfig(String raw) {
+            String normalized = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT).replace('_', '-');
+            for (ModifierQuality quality : values()) {
+                if (quality.configKey.equals(normalized)) {
+                    return quality;
+                }
+            }
+            return NONE;
+        }
+    }
+
+    private record ModifierCandidate(String id, ModifierQuality quality, Object node, double weight) {
+    }
+
+    private record SelectedModifier(String id, ModifierQuality quality, Object node) {
+    }
+}

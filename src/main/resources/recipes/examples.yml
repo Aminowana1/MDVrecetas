@@ -1,5 +1,5 @@
 # ==========================================================
-# Ejemplos MDVRecetas 0.4.0
+# Ejemplos MDVRecetas 0.6.0
 # Puedes copiar estos bloques y cambiar enabled: true.
 # ==========================================================
 recipes:
@@ -35,6 +35,8 @@ recipes:
 
     forjador:
       exp: 0.8
+      signature: false
+      modifiers: false
 
   espada_hierro_orco:
     enabled: false
@@ -69,6 +71,8 @@ recipes:
 
     forjador:
       exp: 2.0
+      signature: true
+      modifiers: true
 
   nucleo_gelido_pulido:
     enabled: false
@@ -96,6 +100,8 @@ recipes:
 
     forjador:
       exp: 0.8
+      signature: false
+      modifiers: false
 
   hierro_orco_refinado:
     enabled: false
@@ -121,3 +127,5 @@ recipes:
 
     forjador:
       exp: 0.5
+      signature: false
+      modifiers: false

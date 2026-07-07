@@ -12,6 +12,7 @@ import com.mdvcraft.mdvrecetas.service.FloatingTextService;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
 import com.mdvcraft.mdvrecetas.service.ItemResolver;
 import com.mdvcraft.mdvrecetas.service.RecipeSignatureService;
+import com.mdvcraft.mdvrecetas.service.ForjadorModifierService;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -23,6 +24,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
     private ForjadorXpService forjadorXpService;
     private FloatingTextService floatingTextService;
     private RecipeSignatureService recipeSignatureService;
+    private ForjadorModifierService forjadorModifierService;
     private RecipeGuiManager recipeGuiManager;
     private EditorGuiManager editorGuiManager;
     private MDVSocialHook mdvSocialHook;
@@ -38,15 +40,16 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.floatingTextService = new FloatingTextService(this);
         this.forjadorXpService = new ForjadorXpService(this, floatingTextService);
         this.recipeSignatureService = new RecipeSignatureService(this);
+        this.forjadorModifierService = new ForjadorModifierService(this);
         this.recipeManager = new MdvRecipeManager(this, itemResolver);
         this.recipeGuiManager = new RecipeGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.5.0 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.0 enabled. Recipes: " + loaded);
 
-        getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService), this);
-        getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService), this);
+        getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
+        getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(recipeGuiManager, this);
         getServer().getPluginManager().registerEvents(editorGuiManager, this);
 
@@ -85,6 +88,10 @@ public final class MDVRecetasPlugin extends JavaPlugin {
 
     public RecipeSignatureService getRecipeSignatureService() {
         return recipeSignatureService;
+    }
+
+    public ForjadorModifierService getForjadorModifierService() {
+        return forjadorModifierService;
     }
 
     public RecipeGuiManager getRecipeGuiManager() {

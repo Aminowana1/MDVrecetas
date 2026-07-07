@@ -358,6 +358,8 @@ public final class EditorGuiManager implements Listener {
             session.setForjadorExp(session.getForjadorExp() + (click.isRightClick() ? -delta : delta));
         } else if (slot == 18) {
             session.setSignature(!session.isSignature());
+        } else if (slot == 20) {
+            session.setModifiers(!session.isModifiers());
         } else if (slot == 28 && session.getStation().isCookingStation()) {
             int delta = click.isShiftClick() ? 100 : 20;
             session.setCookingTime(session.getCookingTime() + (click.isRightClick() ? -delta : delta));
@@ -414,6 +416,7 @@ public final class EditorGuiManager implements Listener {
                 "&7Oculta: " + (session.isHidden() ? "&aSí" : "&cNo"),
                 "&7XP Forjador: &e" + format(session.getForjadorExp()),
                 "&7Firma: " + (session.isSignature() ? "&aSí" : "&cNo"),
+                "&7Modificadores: " + (session.isModifiers() ? "&aSí" : "&cNo"),
                 "&7Reemplaza vanilla: " + (session.isReplaceVanilla() ? "&aSí" : "&cNo"),
                 "", "&eClick para abrir."
         )));
@@ -449,6 +452,13 @@ public final class EditorGuiManager implements Listener {
                 "&7Estado: " + (session.isSignature() ? "&aActivada" : "&cDesactivada"),
                 "&7Si está activada, el resultado",
                 "&7mostrará quién lo fabricó.",
+                "", "&eClick para alternar."
+        )));
+        inv.setItem(20, button(session.isModifiers() ? Material.LIME_DYE : Material.RED_DYE, "&6Modificadores", List.of(
+                "&7Estado: " + (session.isModifiers() ? "&aActivados" : "&cDesactivados"),
+                "&7Si está activado, MDVRecetas",
+                "&7elige un modificador según",
+                "&7el nivel de Forjador.",
                 "", "&eClick para alternar."
         )));
         if (session.getStation().isCookingStation()) {
@@ -509,6 +519,7 @@ public final class EditorGuiManager implements Listener {
         session.setVanillaExp(recipe.getCookingVanillaExp());
         session.setForjadorExp(recipe.getForjador() == null ? 0.0D : recipe.getForjador().getExp());
         session.setSignature(recipe.getForjador() != null && recipe.getForjador().isSignature());
+        session.setModifiers(recipe.getForjador() != null && recipe.getForjador().isModifiers());
         session.setCustomRecipeId(recipe.getId());
         session.setEditingRecipeId(recipe.getId());
         session.setOriginalRecipe(recipe);
@@ -613,7 +624,7 @@ public final class EditorGuiManager implements Listener {
             saveItemSpec(yaml, base + ".result", result);
             yaml.set(base + ".forjador.exp", session.getForjadorExp());
             yaml.set(base + ".forjador.signature", session.isSignature());
-            yaml.set(base + ".forjador.modifiers", false);
+            yaml.set(base + ".forjador.modifiers", session.isModifiers());
             if (session.isEditing()) {
                 if (!id.equalsIgnoreCase(session.getEditingRecipeId())) {
                     yaml.set("recipes." + session.getEditingRecipeId(), null);

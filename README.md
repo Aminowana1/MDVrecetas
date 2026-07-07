@@ -1,46 +1,69 @@
-# MDVRecetas 0.5.0
+# MDVRecetas 0.6.0
 
 Motor de recetas custom para MDVCRAFT.
 
-## Nuevo en 0.5.0
+## Nuevo en 0.6.0
 
-- Firma de crafteo opcional por receta.
-- Lore configurable: `&l&aForjado por: &e%player%`.
-- Datos internos guardados en PersistentDataContainer:
-  - UUID del creador.
-  - Nombre del creador.
-  - ID de receta usada.
-- Nueva opción en el editor para activar/desactivar firma.
-- Por defecto todas las recetas quedan sin firma.
-
-## YAML
+- Firma de crafteo con varias líneas en `config.yml`.
+- Línea vacía superior para separar la firma del lore original.
+- Modificadores por nivel de Forjador.
+- Opción nueva en el editor: `Modificadores`.
+- Las recetas con modificadores se guardan con:
 
 ```yaml
 forjador:
-  exp: 2.0
-  signature: true
-  modifiers: false
+  modifiers: true
 ```
 
-## Editor
+- Los modificadores se eligen según el nivel de Forjador usando `forjador-modifiers.chances`.
+- Los modificadores se clasifican en:
+  - `bad`
+  - `normal`
+  - `good`
+  - `very-good`
+  - `blocked`
+- `reliquia` y `simbionte` quedan bloqueados por defecto mediante `blocked-contains`.
+- El item se muestra normal en la receta y el modificador se aplica al tomar/craftear el resultado.
+- El resultado base de MMOItems se intenta construir sin tirar modifiers internos aleatorios de MMOItems.
 
-Usa:
-
-```text
-/mdvrecetas editor
-```
-
-En Opciones de receta puedes activar **Firma de crafteo**.
-
-## Config
+## Firma
 
 ```yaml
 signature:
   enabled: true
-  lore-line: '&l&aForjado por: &e%player%'
+  lore-lines:
+    - ''
+    - '&a &7🔨 &l&aForjado por: &e%player%'
 ```
 
-## Notas
+## Modificadores por Forjador
 
-La firma solo se aplica al resultado final de recetas donde `forjador.signature` esté en `true`.
-No se añade fecha visible por ahora.
+```yaml
+forjador-modifiers:
+  enabled: true
+  level:
+    placeholder: '%mmocore_profession_level_forjador%'
+
+  chances:
+    level-1:
+      bad: 40
+      normal: 50
+      good: 9
+      very-good: 1
+    level-50:
+      bad: 5
+      normal: 45
+      good: 35
+      very-good: 15
+```
+
+MDVRecetas mira los modificadores que acepta el template de MMOItems y solo elige entre los IDs que estén clasificados en `qualities`.
+
+## Comandos
+
+- `/mdvrecetas`
+- `/mdvrecetas admin`
+- `/mdvrecetas editor`
+- `/mdvrecetas reload`
+- `/mdvrecetas debugitem`
+- `/mdvrecetas serializehand <id>`

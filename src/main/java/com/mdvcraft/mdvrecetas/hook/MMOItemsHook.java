@@ -38,6 +38,11 @@ public final class MMOItemsHook {
                 return null;
             }
 
+            ItemStack baseItem = buildBaseItemWithoutModifiers(plugin, type, itemId.toUpperCase(Locale.ROOT));
+            if (baseItem != null) {
+                return baseItem;
+            }
+
             Method getItem = findGetItemMethod(plugin.getClass(), type);
             if (getItem == null) {
                 return null;
@@ -99,6 +104,43 @@ public final class MMOItemsHook {
             return Optional.of(new MmoIdentity(type.toUpperCase(Locale.ROOT), id.toUpperCase(Locale.ROOT)));
         } catch (ReflectiveOperationException ignored) {
             return Optional.empty();
+        }
+    }
+
+    /**
+     * MDVRecetas wants the preview/result registered in Bukkit to look normal.
+     * MMOItems#getItem may roll template modifiers depending on the item setup,
+     * so we first try to build the template with the modifier group skipped.
+     */
+    private ItemStack buildBaseItemWithoutModifiers(Object plugin, Object type, String itemId) {
+        try {
+            Object templates = plugin.getClass().getMethod("getTemplates").invoke(plugin);
+            Object template = null;
+            for (Method method : templates.getClass().getMethods()) {
+                if (!method.getName().equals("getTemplate") || method.getParameterCount() != 2) {
+                    continue;
+                }
+                Class<?>[] params = method.getParameterTypes();
+                if (params[0].isInstance(type) && params[1].equals(String.class)) {
+                    template = method.invoke(templates, type, itemId);
+                    break;
+                }
+            }
+            if (template == null) {
+                return null;
+            }
+
+            Class<?> builderClass = Class.forName("net.Indyuce.mmoitems.api.item.build.MMOItemBuilder");
+            Class<?> templateClass = Class.forName("net.Indyuce.mmoitems.api.item.template.MMOItemTemplate");
+            Class<?> tierClass = Class.forName("net.Indyuce.mmoitems.api.ItemTier");
+            Object builder = builderClass.getConstructor(templateClass, int.class, tierClass, boolean.class)
+                    .newInstance(template, 0, null, true);
+            Object mmoItem = builderClass.getMethod("build").invoke(builder);
+            Object stackBuilder = mmoItem.getClass().getMethod("newBuilder").invoke(mmoItem);
+            Object item = stackBuilder.getClass().getMethod("build").invoke(stackBuilder);
+            return item instanceof ItemStack ? (ItemStack) item : null;
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 
