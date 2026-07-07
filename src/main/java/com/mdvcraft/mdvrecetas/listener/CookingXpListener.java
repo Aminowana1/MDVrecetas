@@ -11,6 +11,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.FurnaceExtractEvent;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.event.inventory.FurnaceStartSmeltEvent;
@@ -20,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Iterator;
 
 public final class CookingXpListener implements Listener {
     private final MDVRecetasPlugin plugin;
@@ -128,6 +132,35 @@ public final class CookingXpListener implements Listener {
         }
 
         xpService.award(player, block.getLocation(), pending.xp(), pending.recipeId());
+    }
+
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onFurnaceBreak(BlockBreakEvent event) {
+        clearBlock(event.getBlock());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockExplode(BlockExplodeEvent event) {
+        for (Block block : event.blockList()) {
+            clearBlock(block);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent event) {
+        for (Block block : event.blockList()) {
+            clearBlock(block);
+        }
+    }
+
+    public void clearBlock(Block block) {
+        if (block == null) {
+            return;
+        }
+        String key = blockKey(block);
+        activeCookingRecipes.remove(key);
+        pendingXp.remove(key);
     }
 
     private ItemStack liveCookingSource(Block block) {

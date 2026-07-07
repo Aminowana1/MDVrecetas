@@ -38,6 +38,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
             case "open", "menu", "guia", "guide" -> handleOpen(sender);
             case "reload" -> handleReload(sender);
             case "debugitem" -> handleDebugItem(sender);
+            case "editor", "edit" -> handleEditor(sender);
             case "serializehand" -> handleSerializeHand(sender, args);
             case "help", "ayuda" -> sendHelp(sender, label);
             default -> sendHelp(sender, label);
@@ -74,6 +75,19 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
             exception.printStackTrace();
             message(sender, "messages.reload-fail");
         }
+    }
+
+
+    private void handleEditor(CommandSender sender) {
+        if (!sender.hasPermission("mdvrecetas.admin")) {
+            message(sender, "messages.no-permission");
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            message(sender, "messages.player-only");
+            return;
+        }
+        plugin.getEditorGuiManager().openStationSelect(player);
     }
 
     private void handleDebugItem(CommandSender sender) {
@@ -157,6 +171,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " &7- Abre la guía de recetas."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " reload &7- Recarga recetas."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " debugitem &7- Revisa el item en mano."));
+        sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " editor &7- Abre el editor admin de recetas."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " serializehand <id> &7- Guarda un ItemStack exacto."));
     }
 
@@ -172,7 +187,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             List<String> result = new ArrayList<>();
-            for (String option : List.of("open", "reload", "debugitem", "serializehand", "help")) {
+            for (String option : List.of("open", "reload", "debugitem", "serializehand", "editor", "help")) {
                 if (option.startsWith(args[0].toLowerCase(Locale.ROOT))) {
                     result.add(option);
                 }

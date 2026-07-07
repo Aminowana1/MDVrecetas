@@ -1,20 +1,30 @@
-# MDVRecetas 0.3.4
+# MDVRecetas 0.4.0
 
-Hotfix sobre 0.3.3 enfocada en recetas de horno custom con MMOItems.
+Motor de recetas custom para MDVCRAFT con guía visual tipo Terraria y editor admin básico.
 
-## Cambios
+## Nuevo en 0.4.0
 
-- Mantiene el arreglo de textura custom del botón Volver.
-- Cambia el sistema de XP pendiente de hornos: ya no escribe `PersistentDataContainer` del `TileState` durante `FurnaceSmeltEvent`.
-- Usa memoria temporal por ubicación del horno para evitar que `TileState#update` reinicie la cocción o impida que aparezca el resultado.
-- Añade `FurnaceStartSmeltEvent` para guardar qué receta MDVRecetas empezó a cocinarse. Esto ayuda cuando `FurnaceSmeltEvent#getSource()` llega sin el NBT real de MMOItems.
-- Mantiene validación para evitar que un item vanilla con el mismo material base se convierta en resultado custom.
+- Limpieza de memoria temporal de hornos al romperse o explotar.
+- `/mdvrecetas editor` para crear recetas dentro del juego.
+- Selector de estación: mesa de crafteo, horno, alto horno, hoguera y ahumador.
+- Editor de receta con grilla 3x3, estación, resultado y botón de opciones.
+- Opciones editables: categoría, hidden, tipo SHAPED/SHAPELESS, tiempo de cocción, XP vanilla y XP de Forjador.
+- Guardado automático en `plugins/MDVRecetas/recipes/editor.yml`.
+- El editor detecta automáticamente VANILLA, MMOITEMS o ITEMSTACK serializado.
 
-## Prueba recomendada
+## Comandos
 
-1. Apaga el servidor.
-2. Reemplaza el jar por MDVRecetas 0.3.4.
-3. Borra `plugins/MDVRecetas/` si estás probando limpio.
-4. Enciende el servidor.
-5. Prueba una receta de horno con un ingrediente MMOItems.
-6. Si no funciona, revisa consola buscando mensajes de MDVRecetas y confirma `/mdvrecetas debugitem` del ingrediente y resultado.
+- `/mdvrecetas` abre la guía visual.
+- `/mdvrecetas reload` recarga recetas.
+- `/mdvrecetas debugitem` muestra información del item en mano.
+- `/mdvrecetas serializehand <id>` guarda un item exacto en Base64.
+- `/mdvrecetas editor` abre el editor admin.
+
+## Permisos
+
+- `mdvrecetas.use` permite abrir la guía.
+- `mdvrecetas.admin` permite reload, debug, serialize y editor.
+
+## Nota del editor 0.4.0
+
+El editor 0.4.0 es una primera versión funcional. Sirve para crear recetas simples y guardarlas en YAML. Todavía no incluye edición de recetas existentes, reemplazo vanilla desde GUI ni nombre manual de ID; genera IDs automáticos.

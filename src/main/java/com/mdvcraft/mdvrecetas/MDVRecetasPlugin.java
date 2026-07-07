@@ -2,6 +2,7 @@ package com.mdvcraft.mdvrecetas;
 
 import com.mdvcraft.mdvrecetas.command.MDVRecetasCommand;
 import com.mdvcraft.mdvrecetas.gui.RecipeGuiManager;
+import com.mdvcraft.mdvrecetas.editor.EditorGuiManager;
 import com.mdvcraft.mdvrecetas.hook.MDVSocialHook;
 import com.mdvcraft.mdvrecetas.hook.MMOItemsHook;
 import com.mdvcraft.mdvrecetas.listener.CookingXpListener;
@@ -21,6 +22,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
     private ForjadorXpService forjadorXpService;
     private FloatingTextService floatingTextService;
     private RecipeGuiManager recipeGuiManager;
+    private EditorGuiManager editorGuiManager;
     private MDVSocialHook mdvSocialHook;
 
     @Override
@@ -35,13 +37,15 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.forjadorXpService = new ForjadorXpService(this, floatingTextService);
         this.recipeManager = new MdvRecipeManager(this, itemResolver);
         this.recipeGuiManager = new RecipeGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
+        this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.3.4 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.4.0 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService), this);
         getServer().getPluginManager().registerEvents(recipeGuiManager, this);
+        getServer().getPluginManager().registerEvents(editorGuiManager, this);
 
         MDVRecetasCommand commandExecutor = new MDVRecetasCommand(this);
         PluginCommand command = getCommand("mdvrecetas");
@@ -55,6 +59,9 @@ public final class MDVRecetasPlugin extends JavaPlugin {
     public void onDisable() {
         if (recipeGuiManager != null) {
             recipeGuiManager.closeAllAndReturnSearchItems();
+        }
+        if (editorGuiManager != null) {
+            editorGuiManager.closeAllAndReturnEditorItems();
         }
         if (recipeManager != null) {
             recipeManager.unregisterOwnRecipes();
@@ -75,6 +82,10 @@ public final class MDVRecetasPlugin extends JavaPlugin {
 
     public RecipeGuiManager getRecipeGuiManager() {
         return recipeGuiManager;
+    }
+
+    public EditorGuiManager getEditorGuiManager() {
+        return editorGuiManager;
     }
 
     public MDVSocialHook getMdvSocialHook() {

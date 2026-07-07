@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVRecetas 0.3.4
+# MDVRecetas 0.4.0
 # Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
@@ -111,6 +111,15 @@ gui:
     UTILITARIOS:
       name: '&5Utilitarios'
       icon: COMPASS
+
+
+editor:
+  titles:
+    station-select: '&8&lEditor de Recetas'
+    creator: '&8&lCrear Receta'
+    options: '&8&lOpciones de Receta'
+  station-select:
+    close-slot: 40
 
 messages:
   prefix: '&8[&6MDVRecetas&8] &r'
