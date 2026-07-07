@@ -12,7 +12,6 @@ import com.mdvcraft.mdvrecetas.util.ColorUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -23,24 +22,40 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class RecipeGuiManager implements Listener {
     private static final int DEFAULT_SIZE = 54;
-    private static final int DEFAULT_SEARCH_CENTER = 37;
+    private static final int DEFAULT_SEARCH_CENTER = 40;
 
     private final MDVRecetasPlugin plugin;
     private final MdvRecipeManager recipeManager;
     private final ItemResolver itemResolver;
     private final MDVSocialHook socialHook;
+
+    private final Map<UUID, SearchSession> searchSessions = new HashMap<>();
+    private final Map<UUID, Integer> lastBottomClickSlot = new HashMap<>();
+    private final Set<UUID> internalTransitions = new HashSet<>();
 
     public RecipeGuiManager(MDVRecetasPlugin plugin, MdvRecipeManager recipeManager, ItemResolver itemResolver, MDVSocialHook socialHook) {
         this.plugin = plugin;
@@ -50,24 +65,57 @@ public final class RecipeGuiManager implements Listener {
     }
 
     public void openMain(Player player) {
-        openMain(player, firstCategory(), 0);
+        openMain(player, 0);
     }
 
-    public void openMain(Player player, String category, int page) {
-        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.MAIN, normalizeCategory(category), Math.max(0, page), null);
-        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.title", "&8&lGuía de Recetas")));
+    public void openMain(Player player, int categoryPage) {
+        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.MAIN, firstCategory(), Math.max(0, categoryPage), null, RecipeMenuHolder.BackTarget.MDVSOCIAL);
+        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.titles.main", "&8&lGuía de Recetas")));
         holder.setInventory(inventory);
-        renderMain(holder, null);
-        player.openInventory(inventory);
+        renderMain(holder);
+        openInventory(player, inventory);
+        socialHook.play(player, "open");
+    }
+
+    public void openCategory(Player player, String category, int page) {
+        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.CATEGORY, normalizeCategory(category), Math.max(0, page), null, RecipeMenuHolder.BackTarget.MAIN);
+        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.titles.category", "&8&lRecetas")));
+        holder.setInventory(inventory);
+        renderCategory(holder);
+        openInventory(player, inventory);
         socialHook.play(player, "open");
     }
 
     public void openRecipe(Player player, MdvRecipe recipe) {
-        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.RECIPE, recipe.getCategory(), 0, recipe);
-        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.recipe-title", "&8&lVista de Receta")));
+        openRecipeFromCategory(player, recipe, recipe.getCategory(), 0);
+    }
+
+    private void openRecipeFromCategory(Player player, MdvRecipe recipe, String category, int page) {
+        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.RECIPE, normalizeCategory(category), Math.max(0, page), recipe, RecipeMenuHolder.BackTarget.CATEGORY);
+        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.titles.recipe", "&8&lVista de Receta")));
         holder.setInventory(inventory);
         renderRecipe(holder);
-        player.openInventory(inventory);
+        openInventory(player, inventory);
+        socialHook.play(player, "open");
+    }
+
+    private void openRecipeFromSearch(Player player, MdvRecipe recipe, int searchPage) {
+        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.RECIPE, recipe.getCategory(), searchPage, recipe, RecipeMenuHolder.BackTarget.SEARCH);
+        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.titles.recipe", "&8&lVista de Receta")));
+        holder.setInventory(inventory);
+        renderRecipe(holder);
+        openInventory(player, inventory);
+        socialHook.play(player, "open");
+    }
+
+    private void openRecipeFromRecipe(Player player, MdvRecipe recipe, MdvRecipe parentRecipe, int parentPage) {
+        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.RECIPE, parentRecipe.getCategory(), 0, recipe, RecipeMenuHolder.BackTarget.RECIPE);
+        holder.setParentRecipe(parentRecipe);
+        holder.setParentPage(parentPage);
+        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.titles.recipe", "&8&lVista de Receta")));
+        holder.setInventory(inventory);
+        renderRecipe(holder);
+        openInventory(player, inventory);
         socialHook.play(player, "open");
     }
 
@@ -95,29 +143,28 @@ public final class RecipeGuiManager implements Listener {
         if (!topClick) {
             if (event.isShiftClick()) {
                 event.setCancelled(true);
+                socialHook.play(player, "invalid");
+                return;
+            }
+            if (event.getCurrentItem() != null && !event.getCurrentItem().getType().isAir()) {
+                lastBottomClickSlot.put(player.getUniqueId(), event.getSlot());
             }
             return;
         }
 
-        if (holder.getScreen() == RecipeMenuHolder.Screen.MAIN && rawSlot == searchCenterSlot()) {
+        if (isSearchCenter(holder, rawSlot)) {
             event.setCancelled(false);
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (player.getOpenInventory().getTopInventory().getHolder() instanceof RecipeMenuHolder currentHolder
-                        && currentHolder.getScreen() == RecipeMenuHolder.Screen.MAIN) {
-                    currentHolder.setPage(0);
-                    renderMain(currentHolder, currentHolder.getInventory().getItem(searchCenterSlot()));
-                    socialHook.play(player, "open");
-                }
-            });
+            Bukkit.getScheduler().runTask(plugin, () -> handleSearchCenterChanged(player));
             return;
         }
 
         event.setCancelled(true);
 
-        if (holder.getScreen() == RecipeMenuHolder.Screen.MAIN) {
-            handleMainClick(player, holder, rawSlot);
-        } else if (holder.getScreen() == RecipeMenuHolder.Screen.RECIPE) {
-            handleRecipeClick(player, holder, rawSlot);
+        switch (holder.getScreen()) {
+            case MAIN -> handleMainClick(player, holder, rawSlot);
+            case CATEGORY -> handleCategoryClick(player, holder, rawSlot);
+            case SEARCH -> handleSearchClick(player, holder, rawSlot);
+            case RECIPE -> handleRecipeClick(player, holder, rawSlot);
         }
     }
 
@@ -129,11 +176,11 @@ public final class RecipeGuiManager implements Listener {
         if (!(event.getView().getTopInventory().getHolder() instanceof RecipeMenuHolder holder)) {
             return;
         }
-        if (holder.getScreen() != RecipeMenuHolder.Screen.MAIN) {
+        int center = searchCenterSlot();
+        if (holder.getScreen() != RecipeMenuHolder.Screen.MAIN && holder.getScreen() != RecipeMenuHolder.Screen.SEARCH) {
             event.setCancelled(true);
             return;
         }
-        int center = searchCenterSlot();
         boolean touchesTop = false;
         boolean onlyCenter = true;
         for (int rawSlot : event.getRawSlots()) {
@@ -150,14 +197,7 @@ public final class RecipeGuiManager implements Listener {
             return;
         }
         if (touchesTop) {
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (player.getOpenInventory().getTopInventory().getHolder() instanceof RecipeMenuHolder currentHolder
-                        && currentHolder.getScreen() == RecipeMenuHolder.Screen.MAIN) {
-                    currentHolder.setPage(0);
-                    renderMain(currentHolder, currentHolder.getInventory().getItem(center));
-                    socialHook.play(player, "open");
-                }
-            });
+            Bukkit.getScheduler().runTask(plugin, () -> handleSearchCenterChanged(player));
         }
     }
 
@@ -166,185 +206,451 @@ public final class RecipeGuiManager implements Listener {
         if (!(event.getPlayer() instanceof Player player)) {
             return;
         }
-        if (event.getInventory().getHolder() instanceof RecipeMenuHolder holder && holder.getScreen() == RecipeMenuHolder.Screen.MAIN) {
-            returnSearchItem(player, event.getInventory());
+        if (!(event.getInventory().getHolder() instanceof RecipeMenuHolder holder)) {
+            return;
         }
+        if (internalTransitions.contains(player.getUniqueId())) {
+            return;
+        }
+        returnSearchItem(player, holder.getInventory());
     }
 
     private void handleMainClick(Player player, RecipeMenuHolder holder, int slot) {
+        if (slot == mainBackSlot()) {
+            returnSearchItem(player, holder.getInventory());
+            socialHook.play(player, "back");
+            openMdvSocial(player);
+            return;
+        }
+        if (slot == closeSlot()) {
+            returnSearchItem(player, holder.getInventory());
+            socialHook.play(player, "close");
+            player.closeInventory();
+            return;
+        }
+        List<CategoryInfo> categoryList = new ArrayList<>(categories().values());
+        int pageSize = categorySlots().size();
+        int maxPage = maxPage(categoryList.size(), pageSize);
+        if (slot == mainPreviousSlot() && maxPage > 0) {
+            if (holder.getPage() > 0) {
+                holder.setPage(holder.getPage() - 1);
+                renderMain(holder);
+                socialHook.play(player, "page");
+            } else {
+                socialHook.play(player, "invalid");
+            }
+            return;
+        }
+        if (slot == mainNextSlot() && maxPage > 0) {
+            if (holder.getPage() < maxPage) {
+                holder.setPage(holder.getPage() + 1);
+                renderMain(holder);
+                socialHook.play(player, "page");
+            } else {
+                socialHook.play(player, "invalid");
+            }
+            return;
+        }
+        String category = categoryByVisibleSlot(slot, holder.getPage());
+        if (category != null) {
+            openCategory(player, category, 0);
+            return;
+        }
+    }
+
+    private void handleCategoryClick(Player player, RecipeMenuHolder holder, int slot) {
+        if (slot == categoryBackSlot()) {
+            openMain(player, 0);
+            socialHook.play(player, "back");
+            return;
+        }
         if (slot == closeSlot()) {
             socialHook.play(player, "close");
             player.closeInventory();
             return;
         }
-        if (slot == previousSlot()) {
+        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory());
+        int maxPage = maxPage(recipes.size(), categoryRecipeSlots().size());
+        if (slot == categoryPreviousSlot() && maxPage > 0) {
             if (holder.getPage() > 0) {
                 holder.setPage(holder.getPage() - 1);
-                renderMain(holder, holder.getInventory().getItem(searchCenterSlot()));
+                renderCategory(holder);
                 socialHook.play(player, "page");
             } else {
                 socialHook.play(player, "invalid");
             }
             return;
         }
-        if (slot == nextSlot()) {
-            List<MdvRecipe> list = currentRecipeList(holder, holder.getInventory().getItem(searchCenterSlot()));
-            int maxPage = maxPage(list.size());
+        if (slot == categoryNextSlot() && maxPage > 0) {
             if (holder.getPage() < maxPage) {
                 holder.setPage(holder.getPage() + 1);
-                renderMain(holder, holder.getInventory().getItem(searchCenterSlot()));
+                renderCategory(holder);
                 socialHook.play(player, "page");
             } else {
                 socialHook.play(player, "invalid");
             }
             return;
         }
-
-        String category = categoryBySlot(slot);
-        if (category != null) {
-            returnSearchItem(player, holder.getInventory());
-            holder.getInventory().setItem(searchCenterSlot(), null);
-            holder.setCategory(category);
-            holder.setPage(0);
-            renderMain(holder, null);
-            socialHook.play(player, "open");
-            return;
-        }
-
         MdvRecipe recipe = holder.getRecipeSlots().get(slot);
         if (recipe != null) {
-            openRecipe(player, recipe);
+            openRecipeFromCategory(player, recipe, holder.getCategory(), holder.getPage());
+        }
+    }
+
+    private void handleSearchClick(Player player, RecipeMenuHolder holder, int slot) {
+        if (slot == searchBackSlot()) {
+            returnSearchItem(player, holder.getInventory());
+            openMain(player, 0);
+            socialHook.play(player, "back");
+            return;
+        }
+        if (slot == closeSlot()) {
+            returnSearchItem(player, holder.getInventory());
+            socialHook.play(player, "close");
+            player.closeInventory();
+            return;
+        }
+        SearchSession session = searchSessions.get(player.getUniqueId());
+        List<MdvRecipe> recipes = session == null ? List.of() : currentSearchRecipes(session.item());
+        int maxPage = maxPage(recipes.size(), searchRecipeSlots().size());
+        if (slot == searchPreviousSlot() && maxPage > 0) {
+            if (holder.getPage() > 0) {
+                holder.setPage(holder.getPage() - 1);
+                renderSearch(holder, session == null ? null : session.item());
+                socialHook.play(player, "page");
+            } else {
+                socialHook.play(player, "invalid");
+            }
+            return;
+        }
+        if (slot == searchNextSlot() && maxPage > 0) {
+            if (holder.getPage() < maxPage) {
+                holder.setPage(holder.getPage() + 1);
+                renderSearch(holder, session == null ? null : session.item());
+                socialHook.play(player, "page");
+            } else {
+                socialHook.play(player, "invalid");
+            }
+            return;
+        }
+        MdvRecipe recipe = holder.getRecipeSlots().get(slot);
+        if (recipe != null) {
+            openRecipeFromSearch(player, recipe, holder.getPage());
         }
     }
 
     private void handleRecipeClick(Player player, RecipeMenuHolder holder, int slot) {
+        if (slot == recipeBackSlot()) {
+            handleRecipeBack(player, holder);
+            socialHook.play(player, "back");
+            return;
+        }
         if (slot == closeSlot()) {
+            returnSearchItem(player, holder.getInventory());
             socialHook.play(player, "close");
             player.closeInventory();
             return;
         }
-        if (slot == backSlot()) {
-            openMain(player, holder.getCategory(), 0);
-            socialHook.play(player, "back");
+        ItemSpec ingredient = holder.getIngredientSlots().get(slot);
+        if (ingredient != null) {
+            Optional<MdvRecipe> target = recipeManager.findVisibleRecipeProducing(ingredient);
+            if (target.isPresent()) {
+                openRecipeFromRecipe(player, target.get(), holder.getRecipe(), holder.getPage());
+            } else {
+                socialHook.play(player, "invalid");
+            }
         }
     }
 
-    private void renderMain(RecipeMenuHolder holder, ItemStack searchItem) {
+    private void handleRecipeBack(Player player, RecipeMenuHolder holder) {
+        RecipeMenuHolder.BackTarget target = holder.getBackTarget();
+        if (target == RecipeMenuHolder.BackTarget.SEARCH) {
+            SearchSession session = searchSessions.get(player.getUniqueId());
+            if (session != null) {
+                RecipeMenuHolder searchHolder = new RecipeMenuHolder(RecipeMenuHolder.Screen.SEARCH, firstCategory(), holder.getPage(), null, RecipeMenuHolder.BackTarget.MAIN);
+                Inventory inventory = Bukkit.createInventory(searchHolder, DEFAULT_SIZE, color(configString("gui.titles.search", "&8&lBúsqueda de Recetas")));
+                searchHolder.setInventory(inventory);
+                renderSearch(searchHolder, session.item());
+                openInventory(player, inventory);
+                return;
+            }
+            openMain(player, 0);
+            return;
+        }
+        if (target == RecipeMenuHolder.BackTarget.RECIPE && holder.getParentRecipe() != null) {
+            RecipeMenuHolder parentHolder = new RecipeMenuHolder(RecipeMenuHolder.Screen.RECIPE, holder.getParentRecipe().getCategory(), holder.getParentPage(), holder.getParentRecipe(), RecipeMenuHolder.BackTarget.CATEGORY);
+            Inventory inventory = Bukkit.createInventory(parentHolder, DEFAULT_SIZE, color(configString("gui.titles.recipe", "&8&lVista de Receta")));
+            parentHolder.setInventory(inventory);
+            renderRecipe(parentHolder);
+            openInventory(player, inventory);
+            return;
+        }
+        openCategory(player, holder.getCategory(), holder.getPage());
+    }
+
+    private void renderMain(RecipeMenuHolder holder) {
         Inventory inventory = holder.getInventory();
         inventory.clear();
         holder.clearRecipeSlots();
+        holder.clearIngredientSlots();
+        fillAll(inventory, Material.BLACK_STAINED_GLASS_PANE, " ");
 
-        drawCategories(inventory, holder.getCategory());
-        drawSearchBox(inventory, searchItem);
-
-        List<MdvRecipe> recipes = currentRecipeList(holder, searchItem);
-        recipes.sort(Comparator.comparing(MdvRecipe::getId));
-        List<Integer> resultSlots = resultSlots();
-        int pageSize = resultSlots.size();
-        int maxPage = maxPage(recipes.size());
-        if (holder.getPage() > maxPage) {
-            holder.setPage(maxPage);
-        }
-        int start = holder.getPage() * pageSize;
-        for (int i = 0; i < pageSize; i++) {
-            int index = start + i;
-            if (index >= recipes.size()) {
-                break;
-            }
-            MdvRecipe recipe = recipes.get(index);
-            int slot = resultSlots.get(i);
-            inventory.setItem(slot, displayResult(recipe));
-            holder.getRecipeSlots().put(slot, recipe);
-        }
-
-        boolean searchMode = searchItem != null && !searchItem.getType().isAir();
-        inventory.setItem(infoSlot(), infoItem(holder, recipes.size(), searchMode));
-        inventory.setItem(previousSlot(), button(Material.ARROW, "&eAnterior", List.of("&7Página " + (holder.getPage() + 1) + " / " + (maxPage + 1))));
-        inventory.setItem(nextSlot(), button(Material.ARROW, "&eSiguiente", List.of("&7Página " + (holder.getPage() + 1) + " / " + (maxPage + 1))));
+        drawCategories(inventory, holder.getPage());
+        drawSearchBox(inventory, null, false);
+        inventory.setItem(searchInfoSlot(), button(Material.OAK_SIGN, configString("gui.search.info-name", "&eBuscador"), configStringList("gui.search.info-lore", List.of("&7Pon un objeto en el centro", "&7para ver qué puedes fabricar."))));
+        inventory.setItem(mainBackSlot(), backHead("&6&lVolver", List.of("", "&7Regresa al menú social.", "", "&eClick para volver.")));
         inventory.setItem(closeSlot(), button(Material.BARRIER, "&cCerrar", List.of("&7Cierra este menú.")));
+
+        List<CategoryInfo> categoryList = new ArrayList<>(categories().values());
+        int maxPage = maxPage(categoryList.size(), categorySlots().size());
+        if (maxPage > 0) {
+            inventory.setItem(mainPreviousSlot(), arrowLeft("&eAnterior", holder.getPage(), maxPage));
+            inventory.setItem(mainNextSlot(), arrowRight("&eSiguiente", holder.getPage(), maxPage));
+        }
+    }
+
+    private void renderCategory(RecipeMenuHolder holder) {
+        Inventory inventory = holder.getInventory();
+        inventory.clear();
+        holder.clearRecipeSlots();
+        holder.clearIngredientSlots();
+        fillAll(inventory, Material.BLACK_STAINED_GLASS_PANE, " ");
+
+        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory());
+        drawRecipeResults(inventory, holder, recipes, categoryRecipeSlots());
+        inventory.setItem(4, categoryInfoItem(holder.getCategory(), recipes.size()));
+        inventory.setItem(categoryBackSlot(), backHead("&6&lVolver", List.of("", "&7Regresa al menú principal", "&7de categorías.", "", "&eClick para volver.")));
+        inventory.setItem(closeSlot(), button(Material.BARRIER, "&cCerrar", List.of("&7Cierra este menú.")));
+
+        int maxPage = maxPage(recipes.size(), categoryRecipeSlots().size());
+        if (maxPage > 0) {
+            inventory.setItem(categoryPreviousSlot(), arrowLeft("&eAnterior", holder.getPage(), maxPage));
+            inventory.setItem(categoryNextSlot(), arrowRight("&eSiguiente", holder.getPage(), maxPage));
+        }
+    }
+
+    private void renderSearch(RecipeMenuHolder holder, ItemStack searchItem) {
+        Inventory inventory = holder.getInventory();
+        inventory.clear();
+        holder.clearRecipeSlots();
+        holder.clearIngredientSlots();
+        fillAll(inventory, Material.BLACK_STAINED_GLASS_PANE, " ");
+
+        List<MdvRecipe> recipes = searchItem == null || searchItem.getType().isAir() ? List.of() : currentSearchRecipes(searchItem);
+        drawRecipeResults(inventory, holder, recipes, searchRecipeSlots());
+        inventory.setItem(searchInfoSlot(), searchInfoItem(searchItem, recipes.size()));
+        drawSearchBox(inventory, searchItem, true);
+        inventory.setItem(searchBackSlot(), backHead("&6&lVolver", List.of("", "&7Regresa al menú principal", "&7y recupera tu objeto.", "", "&eClick para volver.")));
+        inventory.setItem(closeSlot(), button(Material.BARRIER, "&cCerrar", List.of("&7Cierra este menú.")));
+
+        int maxPage = maxPage(recipes.size(), searchRecipeSlots().size());
+        if (maxPage > 0) {
+            inventory.setItem(searchPreviousSlot(), arrowLeft("&eAnterior", holder.getPage(), maxPage));
+            inventory.setItem(searchNextSlot(), arrowRight("&eSiguiente", holder.getPage(), maxPage));
+        }
     }
 
     private void renderRecipe(RecipeMenuHolder holder) {
         Inventory inventory = holder.getInventory();
         inventory.clear();
+        holder.clearRecipeSlots();
+        holder.clearIngredientSlots();
+        fillAll(inventory, Material.BLACK_STAINED_GLASS_PANE, " ");
+
         MdvRecipe recipe = holder.getRecipe();
-
-        fillBorders(inventory);
-        inventory.setItem(4, stationItem(recipe.getStation(), recipe));
-        inventory.setItem(22, button(Material.SPECTRAL_ARROW, "&eResultado", List.of("&7Los ingredientes crean este objeto.")));
-        inventory.setItem(24, displayResult(recipe));
-
-        if (recipe.getType() == RecipeType.SHAPED) {
-            renderShapedRecipe(inventory, recipe);
-        } else if (recipe.getType() == RecipeType.SHAPELESS) {
-            renderShapelessRecipe(inventory, recipe);
-        } else {
-            renderCookingRecipe(inventory, recipe);
+        if (recipe == null) {
+            inventory.setItem(22, button(Material.BARRIER, "&cReceta inválida", List.of("&7No se pudo mostrar esta receta.")));
+            return;
         }
 
-        inventory.setItem(backSlot(), button(Material.ARROW, "&6Volver", List.of("&7Regresa a la lista de recetas.")));
+        drawRecipeIngredients(inventory, holder, recipe);
+        inventory.setItem(recipeStationSlot(), stationItem(recipe.getStation(), recipe));
+        inventory.setItem(recipeResultSlot(), displayResult(recipe));
+        inventory.setItem(recipeBackSlot(), backHead("&6&lVolver", List.of("", "&7Regresa al menú anterior.", "", "&eClick para volver.")));
         inventory.setItem(closeSlot(), button(Material.BARRIER, "&cCerrar", List.of("&7Cierra este menú.")));
     }
 
-    private void renderShapedRecipe(Inventory inventory, MdvRecipe recipe) {
-        int[][] grid = {{10, 11, 12}, {19, 20, 21}, {28, 29, 30}};
-        for (int row = 0; row < 3; row++) {
-            String line = row < recipe.getShape().size() ? recipe.getShape().get(row) : "   ";
-            for (int col = 0; col < 3; col++) {
+    private void drawRecipeIngredients(Inventory inventory, RecipeMenuHolder holder, MdvRecipe recipe) {
+        List<Integer> slots = recipeIngredientSlots();
+        if (recipe.getType() == RecipeType.SHAPED) {
+            for (int i = 0; i < Math.min(9, slots.size()); i++) {
+                int row = i / 3;
+                int col = i % 3;
+                String line = row < recipe.getShape().size() ? recipe.getShape().get(row) : "   ";
                 char symbol = col < line.length() ? line.charAt(col) : ' ';
                 ItemSpec spec = recipe.getShapedIngredients().get(symbol);
-                inventory.setItem(grid[row][col], spec == null ? emptySlot() : ingredientDisplay(spec));
+                setIngredientOrEmpty(inventory, holder, slots.get(i), spec);
             }
+            return;
         }
-        inventory.setItem(14, button(Material.CRAFTING_TABLE, "&eReceta con forma", List.of("&7La posición de los ingredientes importa.")));
+        if (recipe.getType() == RecipeType.SHAPELESS) {
+            int index = 0;
+            for (ItemSpec spec : recipe.getShapelessIngredients().values()) {
+                if (index >= slots.size()) {
+                    break;
+                }
+                setIngredientOrEmpty(inventory, holder, slots.get(index++), spec);
+            }
+            while (index < slots.size()) {
+                inventory.setItem(slots.get(index++), emptySlot());
+            }
+            return;
+        }
+        for (int slot : slots) {
+            inventory.setItem(slot, emptySlot());
+        }
+        setIngredientOrEmpty(inventory, holder, cookingIngredientSlot(), recipe.getCookingIngredient());
     }
 
-    private void renderShapelessRecipe(Inventory inventory, MdvRecipe recipe) {
-        int[] slots = {10, 11, 12, 19, 20, 21, 28, 29, 30};
-        int index = 0;
-        for (ItemSpec spec : recipe.getShapelessIngredients().values()) {
-            if (index >= slots.length) {
+    private void setIngredientOrEmpty(Inventory inventory, RecipeMenuHolder holder, int slot, ItemSpec spec) {
+        if (spec == null) {
+            inventory.setItem(slot, emptySlot());
+            return;
+        }
+        inventory.setItem(slot, ingredientDisplay(spec));
+        holder.getIngredientSlots().put(slot, spec);
+    }
+
+    private void drawCategories(Inventory inventory, int page) {
+        List<CategoryInfo> categoryList = new ArrayList<>(categories().values());
+        List<Integer> slots = categorySlots();
+        int start = Math.max(0, page) * slots.size();
+        for (int i = 0; i < slots.size(); i++) {
+            int index = start + i;
+            if (index >= categoryList.size()) {
                 break;
             }
-            inventory.setItem(slots[index++], ingredientDisplay(spec));
-        }
-        while (index < slots.length) {
-            inventory.setItem(slots[index++], emptySlot());
-        }
-        inventory.setItem(14, button(Material.CRAFTING_TABLE, "&eReceta sin forma", List.of("&7Solo importan los ingredientes.", "&7El orden no importa.")));
-    }
-
-    private void renderCookingRecipe(Inventory inventory, MdvRecipe recipe) {
-        inventory.setItem(20, ingredientDisplay(recipe.getCookingIngredient()));
-        inventory.setItem(14, button(Material.COAL, "&6Cocción", List.of("&7Tiempo: &e" + recipe.getCookingTime() + " ticks", "&7EXP vanilla: &e" + recipe.getCookingVanillaExp())));
-    }
-
-    private void drawCategories(Inventory inventory, String selectedCategory) {
-        for (CategoryInfo category : categories().values()) {
+            CategoryInfo category = categoryList.get(index);
             List<String> lore = new ArrayList<>();
             lore.add("");
-            lore.add(category.id().equalsIgnoreCase(selectedCategory) ? "&aSeleccionada" : "&eClick para ver recetas.");
-            inventory.setItem(category.slot(), button(category.icon(), category.name(), lore));
+            lore.add("&7Recetas visibles: &e" + currentCategoryRecipes(category.id()).size());
+            lore.add("");
+            lore.add("&eClick para ver esta categoría.");
+            inventory.setItem(slots.get(i), button(category.icon(), category.name(), lore));
         }
     }
 
-    private void drawSearchBox(Inventory inventory, ItemStack searchItem) {
-        ItemStack border = button(Material.GRAY_STAINED_GLASS_PANE, "&8Buscador", List.of("&7Pon un objeto en el centro", "&7para ver qué puedes fabricar."));
+    private void drawSearchBox(Inventory inventory, ItemStack searchItem, boolean active) {
+        Material material = active ? searchActivePane() : searchInactivePane();
+        String name = active ? "&aBuscando recetas" : "&cBuscador de ingrediente";
+        List<String> lore = active
+                ? List.of("&7Mostrando recetas que usan", "&7el objeto del centro.")
+                : List.of("&7Pon un objeto en el centro", "&7para ver qué puedes fabricar.");
+        ItemStack border = button(material, name, lore);
         for (int slot : searchBorderSlots()) {
             inventory.setItem(slot, border);
         }
         if (searchItem == null || searchItem.getType().isAir()) {
             inventory.setItem(searchCenterSlot(), null);
         } else {
-            inventory.setItem(searchCenterSlot(), searchItem);
+            inventory.setItem(searchCenterSlot(), searchItem.clone());
         }
     }
 
-    private List<MdvRecipe> currentRecipeList(RecipeMenuHolder holder, ItemStack searchItem) {
-        if (searchItem != null && !searchItem.getType().isAir()) {
-            return new ArrayList<>(recipeManager.findRecipesUsing(searchItem));
+    private void drawRecipeResults(Inventory inventory, RecipeMenuHolder holder, List<MdvRecipe> recipes, List<Integer> slots) {
+        recipes.sort(Comparator.comparing(MdvRecipe::getId));
+        int maxPage = maxPage(recipes.size(), slots.size());
+        if (holder.getPage() > maxPage) {
+            holder.setPage(maxPage);
         }
-        return recipeManager.getByCategory(holder.getCategory());
+        int start = holder.getPage() * slots.size();
+        for (int i = 0; i < slots.size(); i++) {
+            int index = start + i;
+            int slot = slots.get(i);
+            if (index >= recipes.size()) {
+                continue;
+            }
+            MdvRecipe recipe = recipes.get(index);
+            inventory.setItem(slot, displayResult(recipe));
+            holder.getRecipeSlots().put(slot, recipe);
+        }
+    }
+
+    private void handleSearchCenterChanged(Player player) {
+        if (!(player.getOpenInventory().getTopInventory().getHolder() instanceof RecipeMenuHolder holder)) {
+            return;
+        }
+        if (holder.getScreen() != RecipeMenuHolder.Screen.MAIN && holder.getScreen() != RecipeMenuHolder.Screen.SEARCH) {
+            return;
+        }
+        ItemStack item = holder.getInventory().getItem(searchCenterSlot());
+        if (item == null || item.getType().isAir()) {
+            searchSessions.remove(player.getUniqueId());
+            holder.setScreen(RecipeMenuHolder.Screen.MAIN);
+            holder.setPage(0);
+            renderMain(holder);
+            return;
+        }
+        item = item.clone();
+        int sourceSlot = searchSessions.containsKey(player.getUniqueId())
+                ? searchSessions.get(player.getUniqueId()).sourceSlot()
+                : lastBottomClickSlot.getOrDefault(player.getUniqueId(), -1);
+        searchSessions.put(player.getUniqueId(), new SearchSession(item.clone(), sourceSlot));
+        holder.setScreen(RecipeMenuHolder.Screen.SEARCH);
+        holder.setPage(0);
+        renderSearch(holder, item);
+        socialHook.play(player, "open");
+    }
+
+    private void returnSearchItem(Player player, Inventory inventory) {
+        SearchSession session = searchSessions.remove(player.getUniqueId());
+        ItemStack item = session == null ? null : session.item().clone();
+        if ((item == null || item.getType().isAir()) && inventory != null) {
+            item = inventory.getItem(searchCenterSlot());
+            if (item != null) {
+                item = item.clone();
+            }
+        }
+        if (inventory != null && inventory.getSize() > searchCenterSlot()) {
+            inventory.setItem(searchCenterSlot(), null);
+        }
+        if (item == null || item.getType().isAir()) {
+            return;
+        }
+        if (session != null && session.sourceSlot() >= 0) {
+            PlayerInventory playerInventory = player.getInventory();
+            int slot = session.sourceSlot();
+            if (slot >= 0 && slot < playerInventory.getSize()) {
+                ItemStack current = playerInventory.getItem(slot);
+                if (current != null && !current.getType().isAir()) {
+                    player.getWorld().dropItemNaturally(player.getLocation(), current.clone());
+                }
+                playerInventory.setItem(slot, item);
+                return;
+            }
+        }
+        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
+        for (ItemStack leftover : leftovers.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+        }
+    }
+
+    private boolean isSearchCenter(RecipeMenuHolder holder, int rawSlot) {
+        return rawSlot == searchCenterSlot() && (holder.getScreen() == RecipeMenuHolder.Screen.MAIN || holder.getScreen() == RecipeMenuHolder.Screen.SEARCH);
+    }
+
+    private void openInventory(Player player, Inventory inventory) {
+        internalTransitions.add(player.getUniqueId());
+        player.openInventory(inventory);
+        Bukkit.getScheduler().runTask(plugin, () -> internalTransitions.remove(player.getUniqueId()));
+    }
+
+    private void openMdvSocial(Player player) {
+        String command = plugin.getConfig().getString("gui.main-back-command", "mdvsocial");
+        if (command == null || command.isBlank()) {
+            player.closeInventory();
+            return;
+        }
+        player.closeInventory();
+        Bukkit.getScheduler().runTask(plugin, () -> Bukkit.dispatchCommand(player, command.replaceFirst("^/", "")));
+    }
+
+    private List<MdvRecipe> currentCategoryRecipes(String category) {
+        return recipeManager.getVisibleByCategory(category);
+    }
+
+    private List<MdvRecipe> currentSearchRecipes(ItemStack searchItem) {
+        return new ArrayList<>(recipeManager.findVisibleRecipesUsing(searchItem));
     }
 
     private ItemStack displayResult(MdvRecipe recipe) {
@@ -357,7 +663,6 @@ public final class RecipeGuiManager implements Listener {
         if (meta != null) {
             List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
             lore.add(color(""));
-            lore.add(color("&8ID: &7" + recipe.getId()));
             lore.add(color("&7Estación: &e" + stationName(recipe.getStation())));
             lore.add(color("&7Categoría: &f" + prettyCategory(recipe.getCategory())));
             if (recipe.getForjador().getExp() > 0) {
@@ -384,7 +689,10 @@ public final class RecipeGuiManager implements Listener {
             List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
             lore.add(color(""));
             lore.add(color("&7Cantidad: &e" + spec.getAmount()));
-            lore.add(color("&8Tipo interno: &7" + spec.getKind().name()));
+            recipeManager.findVisibleRecipeProducing(spec).ifPresentOrElse(
+                    recipe -> lore.add(color("&eClick para ver cómo se fabrica.")),
+                    () -> lore.add(color("&8Este ingrediente no tiene receta visible."))
+            );
             meta.setLore(lore);
             meta.addItemFlags(ItemFlag.values());
             item.setItemMeta(meta);
@@ -398,23 +706,44 @@ public final class RecipeGuiManager implements Listener {
         lore.add("&7Dónde se fabrica:");
         lore.add("&e" + stationName(station));
         lore.add("");
-        lore.add("&7Tipo: &f" + recipe.getType().name());
+        lore.add("&7Tipo: &f" + recipeTypeName(recipe.getType()));
+        if (recipe.getType() == RecipeType.COOKING) {
+            lore.add("&7Tiempo: &e" + recipe.getCookingTime() + " ticks");
+            lore.add("&7EXP vanilla: &e" + recipe.getCookingVanillaExp());
+        }
         return button(stationMaterial(station), "&6&l" + stationName(station), lore);
     }
 
-    private ItemStack infoItem(RecipeMenuHolder holder, int count, boolean searchMode) {
+    private ItemStack searchInfoItem(ItemStack item, int count) {
         List<String> lore = new ArrayList<>();
         lore.add("");
-        if (searchMode) {
-            lore.add("&7Mostrando recetas que usan");
-            lore.add("&7el objeto del buscador.");
-        } else {
-            lore.add("&7Categoría actual:");
-            lore.add("&e" + prettyCategory(holder.getCategory()));
-        }
+        lore.add("&7Objeto consultado:");
+        lore.add("&e" + (item == null ? "Nada" : item.getType().name()));
         lore.add("");
         lore.add("&7Recetas encontradas: &e" + count);
+        return button(Material.OAK_SIGN, "&eBuscador", lore);
+    }
+
+    private ItemStack categoryInfoItem(String category, int count) {
+        List<String> lore = new ArrayList<>();
+        lore.add("");
+        lore.add("&7Categoría actual:");
+        lore.add("&e" + prettyCategory(category));
+        lore.add("");
+        lore.add("&7Recetas visibles: &e" + count);
         return button(Material.BOOK, "&6Información", lore);
+    }
+
+    private ItemStack arrowLeft(String name, int page, int maxPage) {
+        return button(Material.ARROW, name, List.of("&7Página &e" + (page + 1) + " &7/ &e" + (maxPage + 1)));
+    }
+
+    private ItemStack arrowRight(String name, int page, int maxPage) {
+        return button(Material.ARROW, name, List.of("&7Página &e" + (page + 1) + " &7/ &e" + (maxPage + 1)));
+    }
+
+    private ItemStack emptySlot() {
+        return button(Material.GRAY_STAINED_GLASS_PANE, " ", List.of());
     }
 
     private ItemStack button(Material material, String name, List<String> lore) {
@@ -435,29 +764,64 @@ public final class RecipeGuiManager implements Listener {
         return item;
     }
 
-    private ItemStack emptySlot() {
-        return button(Material.LIGHT_GRAY_STAINED_GLASS_PANE, "&8Vacío", List.of());
+    private ItemStack backHead(String name, List<String> lore) {
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta rawMeta = item.getItemMeta();
+        if (rawMeta instanceof SkullMeta skullMeta) {
+            applyTexture(skullMeta, plugin.getConfig().getString("gui.buttons.back-texture", ""));
+            skullMeta.setDisplayName(color(name));
+            List<String> coloredLore = new ArrayList<>();
+            for (String line : lore) {
+                coloredLore.add(color(line));
+            }
+            skullMeta.setLore(coloredLore);
+            item.setItemMeta(skullMeta);
+            return item;
+        }
+        return button(Material.ARROW, name, lore);
     }
 
-    private void fillBorders(Inventory inventory) {
-        ItemStack filler = button(Material.GRAY_STAINED_GLASS_PANE, " ", List.of());
+    private void applyTexture(SkullMeta meta, String base64OrUrl) {
+        String textureHash = extractTextureHash(base64OrUrl);
+        if (textureHash == null || textureHash.isBlank()) {
+            return;
+        }
+        try {
+            Object profile = Bukkit.class
+                    .getMethod("createPlayerProfile", UUID.class, String.class)
+                    .invoke(null, UUID.randomUUID(), "mdv_back");
+            Object textures = profile.getClass().getMethod("getTextures").invoke(profile);
+            textures.getClass().getMethod("setSkin", URL.class).invoke(textures, new URL("http://textures.minecraft.net/texture/" + textureHash));
+            profile.getClass().getMethod("setTextures", textures.getClass()).invoke(profile, textures);
+            Class<?> playerProfileClass = Class.forName("org.bukkit.profile.PlayerProfile");
+            SkullMeta.class.getMethod("setOwnerProfile", playerProfileClass).invoke(meta, profile);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String extractTextureHash(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        if (raw.contains("textures.minecraft.net/texture/")) {
+            int index = raw.indexOf("textures.minecraft.net/texture/") + "textures.minecraft.net/texture/".length();
+            return raw.substring(index).replaceAll("[^A-Za-z0-9]", "");
+        }
+        try {
+            String decoded = new String(Base64.getDecoder().decode(raw), StandardCharsets.UTF_8);
+            Matcher matcher = Pattern.compile("textures\\.minecraft\\.net/texture/([A-Za-z0-9]+)").matcher(decoded);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        } catch (IllegalArgumentException ignored) {
+        }
+        return raw.replaceAll("[^A-Za-z0-9]", "");
+    }
+
+    private void fillAll(Inventory inventory, Material material, String name) {
+        ItemStack filler = button(material, name, List.of());
         for (int i = 0; i < inventory.getSize(); i++) {
             inventory.setItem(i, filler);
-        }
-    }
-
-    private void returnSearchItem(Player player, Inventory inventory) {
-        if (inventory == null) {
-            return;
-        }
-        ItemStack item = inventory.getItem(searchCenterSlot());
-        if (item == null || item.getType().isAir()) {
-            return;
-        }
-        inventory.setItem(searchCenterSlot(), null);
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
-        for (ItemStack leftover : leftovers.values()) {
-            player.getWorld().dropItemNaturally(player.getLocation(), leftover);
         }
     }
 
@@ -474,8 +838,7 @@ public final class RecipeGuiManager implements Listener {
                 result.put(normalizeCategory(id), new CategoryInfo(
                         normalizeCategory(id),
                         category.getString("name", "&f" + prettyCategory(id)),
-                        icon == null ? Material.BOOK : icon,
-                        category.getInt("slot", result.size())
+                        icon == null ? Material.BOOK : icon
                 ));
             }
         }
@@ -484,11 +847,24 @@ public final class RecipeGuiManager implements Listener {
         }
         String[] defaults = {"ARMAS_CUERPO_A_CUERPO", "ARMAS_A_DISTANCIA", "ARMAS_MAGICAS", "SOPORTE_MAGICO", "ARMADURAS", "HERRAMIENTAS", "AGRICULTURA", "CONSUMIBLES", "MATERIALES", "REPARACIONES", "UTILITARIOS"};
         Material[] icons = {Material.IRON_SWORD, Material.BOW, Material.BLAZE_ROD, Material.ENCHANTED_BOOK, Material.IRON_CHESTPLATE, Material.IRON_PICKAXE, Material.WHEAT, Material.HONEY_BOTTLE, Material.IRON_INGOT, Material.ANVIL, Material.COMPASS};
-        int[] slots = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 17};
         for (int i = 0; i < defaults.length; i++) {
-            result.put(defaults[i], new CategoryInfo(defaults[i], "&f" + prettyCategory(defaults[i]), icons[i], slots[i]));
+            result.put(defaults[i], new CategoryInfo(defaults[i], "&f" + prettyCategory(defaults[i]), icons[i]));
         }
         return result;
+    }
+
+    private String categoryByVisibleSlot(int slot, int page) {
+        List<CategoryInfo> categoryList = new ArrayList<>(categories().values());
+        List<Integer> slots = categorySlots();
+        int localIndex = slots.indexOf(slot);
+        if (localIndex < 0) {
+            return null;
+        }
+        int index = page * slots.size() + localIndex;
+        if (index < 0 || index >= categoryList.size()) {
+            return null;
+        }
+        return categoryList.get(index).id();
     }
 
     private String firstCategory() {
@@ -496,25 +872,16 @@ public final class RecipeGuiManager implements Listener {
         if (!categories.isEmpty()) {
             return categories.keySet().iterator().next();
         }
-        Collection<MdvRecipe> recipes = recipeManager.getRecipes();
+        Collection<MdvRecipe> recipes = recipeManager.getVisibleRecipes();
         if (!recipes.isEmpty()) {
             return recipes.iterator().next().getCategory();
         }
         return "GENERAL";
     }
 
-    private String categoryBySlot(int slot) {
-        for (CategoryInfo category : categories().values()) {
-            if (category.slot() == slot) {
-                return category.id();
-            }
-        }
-        return null;
-    }
-
     private String normalizeCategory(String category) {
         if (category == null || category.isBlank()) {
-            return firstCategory();
+            return "GENERAL";
         }
         return category.toUpperCase(Locale.ROOT);
     }
@@ -557,45 +924,121 @@ public final class RecipeGuiManager implements Listener {
         };
     }
 
-    private int maxPage(int size) {
-        int pageSize = Math.max(1, resultSlots().size());
-        return Math.max(0, (int) Math.ceil(size / (double) pageSize) - 1);
+    private String recipeTypeName(RecipeType type) {
+        return switch (type) {
+            case SHAPED -> "Con forma";
+            case SHAPELESS -> "Sin forma";
+            case COOKING -> "Cocción";
+        };
     }
 
-    private List<Integer> resultSlots() {
-        return plugin.getConfig().getIntegerList("gui.recipe-list-slots").isEmpty()
-                ? List.of(18, 19, 20, 21, 22, 23, 24, 25, 26, 30, 31, 32, 33, 34, 35, 39, 40, 41, 42, 43, 44)
-                : plugin.getConfig().getIntegerList("gui.recipe-list-slots");
+    private int maxPage(int size, int pageSize) {
+        int safePageSize = Math.max(1, pageSize);
+        return Math.max(0, (int) Math.ceil(size / (double) safePageSize) - 1);
+    }
+
+    private List<Integer> categorySlots() {
+        return integerList("gui.main.category-slots", List.of(1,2,3,4,5,6,7,10,11,12,13,14,15,16));
+    }
+
+    private List<Integer> categoryRecipeSlots() {
+        return integerList("gui.category.recipe-slots", List.of(10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43));
+    }
+
+    private List<Integer> searchRecipeSlots() {
+        return integerList("gui.search.recipe-slots", List.of(1,2,3,4,5,6,7,10,11,12,13,14,15,16,19,20,21,22,23,24,25));
+    }
+
+    private List<Integer> recipeIngredientSlots() {
+        return integerList("gui.recipe.ingredient-slots", List.of(10,11,12,19,20,21,28,29,30));
     }
 
     private List<Integer> searchBorderSlots() {
-        return plugin.getConfig().getIntegerList("gui.search.border-slots").isEmpty()
-                ? List.of(27, 28, 29, 36, 38, 45, 46, 47)
-                : plugin.getConfig().getIntegerList("gui.search.border-slots");
+        return integerList("gui.search.border-slots", List.of(30,31,32,39,41,48,49,50));
     }
 
     private int searchCenterSlot() {
         return plugin.getConfig().getInt("gui.search.center-slot", DEFAULT_SEARCH_CENTER);
     }
 
-    private int previousSlot() {
-        return plugin.getConfig().getInt("gui.buttons.previous-slot", 48);
+    private int searchInfoSlot() {
+        return plugin.getConfig().getInt("gui.search.info-slot", 38);
     }
 
-    private int infoSlot() {
-        return plugin.getConfig().getInt("gui.buttons.info-slot", 49);
+    private int mainBackSlot() {
+        return plugin.getConfig().getInt("gui.main.back-slot", 45);
     }
 
-    private int nextSlot() {
-        return plugin.getConfig().getInt("gui.buttons.next-slot", 50);
+    private int mainPreviousSlot() {
+        return plugin.getConfig().getInt("gui.main.previous-slot", 46);
     }
 
-    private int backSlot() {
-        return plugin.getConfig().getInt("gui.buttons.back-slot", 49);
+    private int mainNextSlot() {
+        return plugin.getConfig().getInt("gui.main.next-slot", 52);
+    }
+
+    private int categoryBackSlot() {
+        return plugin.getConfig().getInt("gui.category.back-slot", 49);
+    }
+
+    private int categoryPreviousSlot() {
+        return plugin.getConfig().getInt("gui.category.previous-slot", 45);
+    }
+
+    private int categoryNextSlot() {
+        return plugin.getConfig().getInt("gui.category.next-slot", 53);
+    }
+
+    private int searchBackSlot() {
+        return plugin.getConfig().getInt("gui.search.back-slot", 45);
+    }
+
+    private int searchPreviousSlot() {
+        return plugin.getConfig().getInt("gui.search.previous-slot", 46);
+    }
+
+    private int searchNextSlot() {
+        return plugin.getConfig().getInt("gui.search.next-slot", 52);
+    }
+
+    private int recipeBackSlot() {
+        return plugin.getConfig().getInt("gui.recipe.back-slot", 45);
+    }
+
+    private int recipeStationSlot() {
+        return plugin.getConfig().getInt("gui.recipe.station-slot", 23);
+    }
+
+    private int recipeResultSlot() {
+        return plugin.getConfig().getInt("gui.recipe.result-slot", 25);
+    }
+
+    private int cookingIngredientSlot() {
+        return plugin.getConfig().getInt("gui.recipe.cooking-ingredient-slot", 20);
     }
 
     private int closeSlot() {
         return plugin.getConfig().getInt("gui.buttons.close-slot", 53);
+    }
+
+    private Material searchInactivePane() {
+        Material material = Material.matchMaterial(plugin.getConfig().getString("gui.search.inactive-pane", "RED_STAINED_GLASS_PANE"));
+        return material == null ? Material.RED_STAINED_GLASS_PANE : material;
+    }
+
+    private Material searchActivePane() {
+        Material material = Material.matchMaterial(plugin.getConfig().getString("gui.search.active-pane", "LIME_STAINED_GLASS_PANE"));
+        return material == null ? Material.LIME_STAINED_GLASS_PANE : material;
+    }
+
+    private List<Integer> integerList(String path, List<Integer> fallback) {
+        List<Integer> list = plugin.getConfig().getIntegerList(path);
+        return list.isEmpty() ? fallback : list;
+    }
+
+    private List<String> configStringList(String path, List<String> fallback) {
+        List<String> list = plugin.getConfig().getStringList(path);
+        return list.isEmpty() ? fallback : list;
     }
 
     private String configString(String path, String fallback) {
@@ -613,6 +1056,9 @@ public final class RecipeGuiManager implements Listener {
         return String.format(Locale.US, "%.2f", value).replaceAll("0+$", "").replaceAll("\\.$", "");
     }
 
-    private record CategoryInfo(String id, String name, Material icon, int slot) {
+    private record CategoryInfo(String id, String name, Material icon) {
+    }
+
+    private record SearchSession(ItemStack item, int sourceSlot) {
     }
 }

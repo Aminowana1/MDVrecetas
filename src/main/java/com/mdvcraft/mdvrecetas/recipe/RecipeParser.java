@@ -24,6 +24,7 @@ public final class RecipeParser {
         StationType station = enumValue(StationType.class, section.getString("station", "CRAFTING_TABLE"), StationType.CRAFTING_TABLE);
         RecipeType type = enumValue(RecipeType.class, section.getString("type", station.isCookingStation() ? "COOKING" : "SHAPED"), RecipeType.SHAPED);
         String category = section.getString("category", "GENERAL").toUpperCase(Locale.ROOT);
+        boolean hidden = section.getBoolean("hidden", section.getBoolean("hide", false));
         NamespacedKey key = new NamespacedKey(plugin, sanitizeKey(id));
 
         ItemSpec result = itemResolver.fromConfig(section.getConfigurationSection("result"));
@@ -63,6 +64,7 @@ public final class RecipeParser {
                 station,
                 type,
                 category,
+                hidden,
                 shape,
                 shapedIngredients,
                 shapelessIngredients,

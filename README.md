@@ -1,79 +1,69 @@
-# MDVRecetas 0.2.0
+# MDVRecetas 0.3.0
 
-Motor de recetas custom para MDVCRAFT + visualizador tipo Terraria.
+Motor de recetas custom para MDVCRAFT + guía visual tipo Terraria.
 
-## Funciones incluidas
+## Incluye
 
-- Carga recetas desde `plugins/MDVRecetas/recipes/*.yml`.
-- Registra recetas en Bukkit/Paper/Purpur.
-- Soporta:
-  - Mesa de crafteo: `SHAPED` y `SHAPELESS`.
-  - Horno: `FURNACE` + `COOKING`.
-  - Alto horno: `BLAST_FURNACE` + `COOKING`.
-  - Ahumador: `SMOKER` + `COOKING`.
-  - Hoguera: `CAMPFIRE` + `COOKING` registrada, aunque no recomendada todavía para XP.
+- Carga de recetas desde `plugins/MDVRecetas/recipes/*.yml`.
+- Registro de recetas Bukkit/Paper.
+- Soporte para:
+  - Mesa de crafteo (`SHAPED` y `SHAPELESS`).
+  - Horno.
+  - Alto horno.
+  - Ahumador.
+  - Hoguera.
 - Ingredientes/resultados:
   - `VANILLA`.
   - `MMOITEMS`.
   - `ITEMSTACK` serializado en Base64.
-- Reemplazo de recetas vanilla con `replace-vanilla`.
-- XP de Forjador mediante comando de MMOCore.
-- Holograma flotante de XP sobre la mesa/estación usando `TextDisplay`.
-- Visualizador `/mdvrecetas`:
-  - Categorías.
-  - Lista paginada de recetas.
-  - Vista de receta completa.
-  - Buscador por ingrediente tipo Terraria.
-  - Muestra la estación donde se fabrica cada item.
-- Comandos:
-  - `/mdvrecetas` abre la guía.
-  - `/mdvrecetas reload` recarga recetas.
-  - `/mdvrecetas debugitem` revisa el item en mano.
-  - `/mdvrecetas serializehand <id>` guarda un ItemStack exacto.
+- Reemplazo de recetas vanilla.
+- XP para profesión `forjador` de MMOCore.
+- Holograma flotante de XP.
+- `/mdvrecetas` abre la guía visual.
+- Menú principal con categorías y buscador.
+- Visualizador de categorías con paginación.
+- Vista completa de receta con estación visible.
+- Buscador por ingrediente tipo Terraria.
+- Ingredientes clickeables: si un ingrediente tiene receta visible, abre esa receta.
+- `hidden: true` / `hide: true` para recetas que se pueden craftear pero no se muestran en la guía.
 
-## Notas importantes
+## Comandos
 
-- En recetas `SHAPED`, cada casilla de la mesa consume 1 item. Bukkit no permite exigir `amount: 2` dentro de una sola casilla de mesa vanilla.
-- En recetas `SHAPELESS`, `amount` sí se traduce repitiendo el ingrediente varias veces.
-- La XP por horno/alto horno/ahumador se guarda como pendiente en el bloque y se entrega al extraer el resultado.
-- CampfireRecipe se registra, pero la XP de campfire queda pendiente para una versión posterior porque Bukkit no tiene un evento equivalente tan limpio con jugador extractor.
-- Los modifiers, firma de crafteo y editor admin quedan para futuras versiones.
-
-## Formato de item
-
-### Vanilla
-
-```yml
-kind: VANILLA
-material: STICK
-amount: 1
+```text
+/mdvrecetas
+/mdvrecetas reload
+/mdvrecetas debugitem
+/mdvrecetas serializehand <id>
 ```
 
-### MMOItems
+## Receta oculta
 
-```yml
-kind: MMOITEMS
-type: MATERIAL
-id: COLMILLOORCO
-amount: 1
+```yaml
+recipes:
+  receta_secreta:
+    enabled: true
+    hidden: true
+    station: CRAFTING_TABLE
+    category: UTILITARIOS
+    type: SHAPELESS
+    ingredients:
+      item:
+        kind: VANILLA
+        material: DIAMOND
+    result:
+      kind: VANILLA
+      material: EMERALD
+      amount: 1
 ```
 
-### ItemStack serializado
+La receta seguirá funcionando en la mesa/horno correspondiente, pero no aparecerá en `/mdvrecetas`, ni en categorías, ni en el buscador.
 
-Usa:
+## Flujo recomendado de prueba
 
-```txt
-/mdvrecetas serializehand mi_item
-```
-
-El plugin guarda el item en:
-
-```txt
-plugins/MDVRecetas/serialized-items/mi_item.yml
-```
-
-Luego puedes copiar el bloque `item:` dentro de una receta.
-
-## Buscador tipo Terraria
-
-Abre `/mdvrecetas`, pon un objeto en el centro del cuadro inferior izquierdo y el menú mostrará todas las recetas que usan ese item como ingrediente. Al cerrar el menú o cambiar de categoría, el item vuelve al inventario del jugador.
+1. Borra `plugins/MDVRecetas/` si estás probando desde cero.
+2. Compila el jar.
+3. Sube el jar al servidor.
+4. Reinicia.
+5. Activa una receta de ejemplo.
+6. Usa `/mdvrecetas reload`.
+7. Prueba `/mdvrecetas`, categorías, vista de receta y buscador.

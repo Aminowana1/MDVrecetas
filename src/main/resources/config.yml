@@ -1,6 +1,6 @@
 # ==========================================================
-# MDVRecetas 0.2.0
-# Motor de recetas custom + visualizador tipo Terraria.
+# MDVRecetas 0.3.0
+# Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
 settings:
@@ -25,68 +25,93 @@ forjador:
     view-range: 24.0
 
 gui:
-  title: '&8&lGuía de Recetas'
-  recipe-title: '&8&lVista de Receta'
+  main-back-command: 'mdvsocial'
 
-  # Slots donde aparecen los resultados/lista de recetas.
-  recipe-list-slots: [18,19,20,21,22,23,24,25,26,30,31,32,33,34,35,39,40,41,42,43,44]
-
-  search:
-    center-slot: 37
-    border-slots: [27,28,29,36,38,45,46,47]
+  titles:
+    main: '&8&lGuía de Recetas'
+    category: '&8&lRecetas'
+    search: '&8&lBuscador de Recetas'
+    recipe: '&8&lVista de Receta'
 
   buttons:
-    previous-slot: 48
-    info-slot: 49
-    next-slot: 50
-    back-slot: 49
     close-slot: 53
+    back-texture: 'eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmQ2OWUwNmU1ZGFkZmQ4NGU1ZjNkMWMyMTA2M2YyNTUzYjJmYTk0NWVlMWQ0ZDcxNTJmZGM1NDI1YmMxMmE5In19fQ=='
+
+  main:
+    # Menú principal: categorías arriba con margen izquierdo/derecho.
+    category-slots: [1,2,3,4,5,6,7,10,11,12,13,14,15,16]
+    back-slot: 45
+    previous-slot: 46
+    next-slot: 52
+
+  category:
+    # Visualizador de categoría. Las flechas solo aparecen si hay más páginas.
+    recipe-slots: [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43]
+    back-slot: 49
+    previous-slot: 45
+    next-slot: 53
+
+  search:
+    # Buscador tipo Terraria.
+    # El jugador pone un objeto en center-slot.
+    center-slot: 40
+    border-slots: [30,31,32,39,41,48,49,50]
+    info-slot: 38
+    inactive-pane: RED_STAINED_GLASS_PANE
+    active-pane: LIME_STAINED_GLASS_PANE
+    recipe-slots: [1,2,3,4,5,6,7,10,11,12,13,14,15,16,19,20,21,22,23,24,25]
+    back-slot: 45
+    previous-slot: 46
+    next-slot: 52
+    info-name: '&eBuscador de ingredientes'
+    info-lore:
+      - '&7Pon un objeto en el centro'
+      - '&7para ver qué crafteos puedes'
+      - '&7hacer con él.'
+
+  recipe:
+    # Vista de receta completa.
+    # 3x3 de ingredientes a la izquierda/centro, estación al medio, resultado a la derecha.
+    ingredient-slots: [10,11,12,19,20,21,28,29,30]
+    cooking-ingredient-slot: 20
+    station-slot: 23
+    result-slot: 25
+    back-slot: 45
 
   categories:
     ARMAS_CUERPO_A_CUERPO:
       name: '&cArmas cuerpo a cuerpo'
       icon: IRON_SWORD
-      slot: 0
     ARMAS_A_DISTANCIA:
       name: '&aArmas a distancia'
       icon: BOW
-      slot: 1
     ARMAS_MAGICAS:
       name: '&9Armas mágicas'
       icon: BLAZE_ROD
-      slot: 2
     SOPORTE_MAGICO:
       name: '&dSoporte mágico'
       icon: ENCHANTED_BOOK
-      slot: 3
     ARMADURAS:
       name: '&6Armaduras'
       icon: IRON_CHESTPLATE
-      slot: 4
     HERRAMIENTAS:
       name: '&7Herramientas'
       icon: IRON_PICKAXE
-      slot: 5
     AGRICULTURA:
       name: '&aAgricultura'
       icon: WHEAT
-      slot: 6
     CONSUMIBLES:
       name: '&eConsumibles'
       icon: HONEY_BOTTLE
-      slot: 7
     MATERIALES:
       name: '&fMateriales'
       icon: IRON_INGOT
-      slot: 8
     REPARACIONES:
       name: '&bReparaciones'
       icon: ANVIL
-      slot: 9
     UTILITARIOS:
       name: '&5Utilitarios'
       icon: COMPASS
-      slot: 17
 
 messages:
   prefix: '&8[&6MDVRecetas&8] &r'

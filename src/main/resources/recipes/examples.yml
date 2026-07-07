@@ -1,5 +1,5 @@
 # ==========================================================
-# Ejemplos MDVRecetas 0.2.0
+# Ejemplos MDVRecetas 0.3.0
 # Puedes copiar estos bloques y cambiar enabled: true.
 # ==========================================================
 recipes:
@@ -7,6 +7,7 @@ recipes:
     enabled: false
     station: CRAFTING_TABLE
     category: CONSUMIBLES
+    hidden: false
     type: SHAPED
 
     replace-vanilla:
@@ -39,6 +40,7 @@ recipes:
     enabled: false
     station: CRAFTING_TABLE
     category: ARMAS_CUERPO_A_CUERPO
+    hidden: false
     type: SHAPED
 
     shape:
@@ -72,6 +74,8 @@ recipes:
     enabled: false
     station: CRAFTING_TABLE
     category: MATERIALES
+    # hidden true permite que la receta funcione, pero no se muestre en /mdvrecetas.
+    hidden: false
     type: SHAPELESS
 
     ingredients:
@@ -97,6 +101,7 @@ recipes:
     enabled: false
     station: FURNACE
     category: MATERIALES
+    hidden: false
     type: COOKING
 
     ingredient:

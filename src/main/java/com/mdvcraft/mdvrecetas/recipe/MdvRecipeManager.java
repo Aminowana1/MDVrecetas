@@ -59,6 +59,29 @@ public final class MdvRecipeManager {
         return Collections.unmodifiableCollection(recipesByKey.values());
     }
 
+    public List<MdvRecipe> getVisibleRecipes() {
+        List<MdvRecipe> result = new ArrayList<>();
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (!recipe.isHidden()) {
+                result.add(recipe);
+            }
+        }
+        return result;
+    }
+
+    public List<MdvRecipe> getVisibleByCategory(String category) {
+        if (category == null || category.isBlank()) {
+            return getVisibleRecipes();
+        }
+        String normalized = category.toUpperCase(Locale.ROOT);
+        List<MdvRecipe> result = new ArrayList<>();
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (!recipe.isHidden() && normalized.equalsIgnoreCase(recipe.getCategory())) {
+                result.add(recipe);
+            }
+        }
+        return result;
+    }
 
     public List<MdvRecipe> getByCategory(String category) {
         if (category == null || category.isBlank()) {
@@ -85,6 +108,38 @@ public final class MdvRecipeManager {
             }
         }
         return result;
+    }
+
+    public List<MdvRecipe> findVisibleRecipesUsing(ItemStack itemStack) {
+        if (itemStack == null || itemStack.getType().isAir()) {
+            return List.of();
+        }
+        List<MdvRecipe> result = new ArrayList<>();
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (!recipe.isHidden() && usesIngredient(recipe, itemStack)) {
+                result.add(recipe);
+            }
+        }
+        return result;
+    }
+
+    public Optional<MdvRecipe> findVisibleRecipeProducing(ItemSpec itemSpec) {
+        if (itemSpec == null) {
+            return Optional.empty();
+        }
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (recipe.isHidden()) {
+                continue;
+            }
+            ItemStack result = itemResolver.buildItem(recipe.getResult());
+            if (result == null || result.getType().isAir()) {
+                continue;
+            }
+            if (itemResolver.matches(result, itemSpec)) {
+                return Optional.of(recipe);
+            }
+        }
+        return Optional.empty();
     }
 
     private boolean usesIngredient(MdvRecipe recipe, ItemStack itemStack) {

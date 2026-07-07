@@ -12,6 +12,7 @@ public final class MdvRecipe {
     private final StationType station;
     private final RecipeType type;
     private final String category;
+    private final boolean hidden;
     private final List<String> shape;
     private final Map<Character, ItemSpec> shapedIngredients;
     private final Map<String, ItemSpec> shapelessIngredients;
@@ -29,6 +30,7 @@ public final class MdvRecipe {
             StationType station,
             RecipeType type,
             String category,
+            boolean hidden,
             List<String> shape,
             Map<Character, ItemSpec> shapedIngredients,
             Map<String, ItemSpec> shapelessIngredients,
@@ -45,6 +47,7 @@ public final class MdvRecipe {
         this.station = station;
         this.type = type;
         this.category = category;
+        this.hidden = hidden;
         this.shape = shape == null ? List.of() : List.copyOf(shape);
         this.shapedIngredients = shapedIngredients == null ? Map.of() : Map.copyOf(shapedIngredients);
         this.shapelessIngredients = shapelessIngredients == null ? Map.of() : Map.copyOf(shapelessIngredients);
@@ -75,6 +78,10 @@ public final class MdvRecipe {
 
     public String getCategory() {
         return category;
+    }
+
+    public boolean isHidden() {
+        return hidden;
     }
 
     public List<String> getShape() {
