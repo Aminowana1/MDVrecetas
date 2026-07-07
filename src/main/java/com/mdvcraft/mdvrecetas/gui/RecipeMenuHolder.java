@@ -36,6 +36,7 @@ public final class RecipeMenuHolder implements InventoryHolder {
     private int parentPage;
     private final Map<Integer, MdvRecipe> recipeSlots = new HashMap<>();
     private final Map<Integer, ItemSpec> ingredientSlots = new HashMap<>();
+    private boolean adminMode;
     private List<RecipeBackState> recipeBackStack = new ArrayList<>();
 
     public RecipeMenuHolder(Screen screen, String category, int page, MdvRecipe recipe, BackTarget backTarget) {
@@ -117,6 +118,14 @@ public final class RecipeMenuHolder implements InventoryHolder {
 
     public Map<Integer, ItemSpec> getIngredientSlots() {
         return ingredientSlots;
+    }
+
+    public boolean isAdminMode() {
+        return adminMode;
+    }
+
+    public void setAdminMode(boolean adminMode) {
+        this.adminMode = adminMode;
     }
 
     public List<RecipeBackState> getRecipeBackStack() {

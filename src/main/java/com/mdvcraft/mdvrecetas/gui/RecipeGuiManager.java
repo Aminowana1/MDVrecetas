@@ -80,9 +80,33 @@ public final class RecipeGuiManager implements Listener {
         socialHook.play(player, "open");
     }
 
+    public void openAdminMain(Player player) {
+        openAdminMain(player, 0);
+    }
+
+    public void openAdminMain(Player player, int categoryPage) {
+        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.MAIN, firstCategory(), Math.max(0, categoryPage), null, RecipeMenuHolder.BackTarget.MAIN);
+        holder.setAdminMode(true);
+        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.titles.admin-main", "&8&lAdmin Recetas")));
+        holder.setInventory(inventory);
+        renderMain(holder);
+        openInventory(player, inventory);
+        socialHook.play(player, "open");
+    }
+
     public void openCategory(Player player, String category, int page) {
         RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.CATEGORY, normalizeCategory(category), Math.max(0, page), null, RecipeMenuHolder.BackTarget.MAIN);
         Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, categoryTitle(normalizeCategory(category)));
+        holder.setInventory(inventory);
+        renderCategory(holder);
+        openInventory(player, inventory);
+        socialHook.play(player, "open");
+    }
+
+    private void openAdminCategory(Player player, String category, int page) {
+        RecipeMenuHolder holder = new RecipeMenuHolder(RecipeMenuHolder.Screen.CATEGORY, normalizeCategory(category), Math.max(0, page), null, RecipeMenuHolder.BackTarget.MAIN);
+        holder.setAdminMode(true);
+        Inventory inventory = Bukkit.createInventory(holder, DEFAULT_SIZE, color(configString("gui.titles.admin-category", "&8&lAdmin %category%").replace("%category%", prettyCategory(normalizeCategory(category)))));
         holder.setInventory(inventory);
         renderCategory(holder);
         openInventory(player, inventory);
@@ -173,7 +197,7 @@ public final class RecipeGuiManager implements Listener {
 
         switch (holder.getScreen()) {
             case MAIN -> handleMainClick(player, holder, rawSlot);
-            case CATEGORY -> handleCategoryClick(player, holder, rawSlot);
+            case CATEGORY -> handleCategoryClick(player, holder, rawSlot, event.getClick());
             case SEARCH -> handleSearchClick(player, holder, rawSlot);
             case RECIPE -> handleRecipeClick(player, holder, rawSlot);
         }
@@ -230,7 +254,11 @@ public final class RecipeGuiManager implements Listener {
         if (slot == mainBackSlot()) {
             returnSearchItem(player, holder.getInventory());
             socialHook.play(player, "back");
-            openMdvSocial(player);
+            if (holder.isAdminMode()) {
+                player.closeInventory();
+            } else {
+                openMdvSocial(player);
+            }
             return;
         }
         List<CategoryInfo> categoryList = new ArrayList<>(categories().values());
@@ -258,18 +286,26 @@ public final class RecipeGuiManager implements Listener {
         }
         String category = categoryByVisibleSlot(slot, holder.getPage());
         if (category != null) {
-            openCategory(player, category, 0);
+            if (holder.isAdminMode()) {
+                openAdminCategory(player, category, 0);
+            } else {
+                openCategory(player, category, 0);
+            }
             return;
         }
     }
 
-    private void handleCategoryClick(Player player, RecipeMenuHolder holder, int slot) {
+    private void handleCategoryClick(Player player, RecipeMenuHolder holder, int slot, org.bukkit.event.inventory.ClickType click) {
         if (slot == categoryBackSlot()) {
-            openMain(player, 0);
+            if (holder.isAdminMode()) {
+                openAdminMain(player, 0);
+            } else {
+                openMain(player, 0);
+            }
             socialHook.play(player, "back");
             return;
         }
-        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory());
+        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory(), holder.isAdminMode());
         int maxPage = maxPage(recipes.size(), categoryRecipeSlots().size());
         if (slot == categoryPreviousSlot() && maxPage > 0) {
             if (holder.getPage() > 0) {
@@ -293,7 +329,11 @@ public final class RecipeGuiManager implements Listener {
         }
         MdvRecipe recipe = holder.getRecipeSlots().get(slot);
         if (recipe != null) {
-            openRecipeFromCategory(player, recipe, holder.getCategory(), holder.getPage());
+            if (holder.isAdminMode() && click.isRightClick()) {
+                plugin.getEditorGuiManager().openEditRecipe(player, recipe);
+            } else {
+                openRecipeFromCategory(player, recipe, holder.getCategory(), holder.getPage());
+            }
         }
     }
 
@@ -411,7 +451,7 @@ public final class RecipeGuiManager implements Listener {
         holder.clearIngredientSlots();
         fillAll(inventory, Material.BLACK_STAINED_GLASS_PANE, " ");
 
-        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory());
+        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory(), holder.isAdminMode());
         drawRecipeResults(inventory, holder, recipes, categoryRecipeSlots());
         inventory.setItem(categoryBackSlot(), backHead("&6&lVolver", List.of("", "&7Regresa al menú principal", "&7de categorías.", "", "&eClick para volver.")));
         int maxPage = maxPage(recipes.size(), categoryRecipeSlots().size());
@@ -512,7 +552,11 @@ public final class RecipeGuiManager implements Listener {
             CategoryInfo category = categoryList.get(index);
             List<String> lore = new ArrayList<>();
             lore.add("");
-            lore.add("&7Recetas visibles: &e" + currentCategoryRecipes(category.id()).size());
+            lore.add("&7Recetas visibles: &e" + currentCategoryRecipes(category.id(), false).size());
+            int hiddenCount = currentCategoryRecipes(category.id(), true).size() - currentCategoryRecipes(category.id(), false).size();
+            if (hiddenCount > 0) {
+                lore.add("&8Ocultas admin: " + hiddenCount);
+            }
             lore.add("");
             lore.add("&eClick para ver esta categoría.");
             inventory.setItem(slots.get(i), button(category.icon(), category.name(), lore));
@@ -550,7 +594,7 @@ public final class RecipeGuiManager implements Listener {
                 continue;
             }
             MdvRecipe recipe = recipes.get(index);
-            inventory.setItem(slot, displayResult(recipe));
+            inventory.setItem(slot, displayResult(recipe, holder.isAdminMode()));
             holder.getRecipeSlots().put(slot, recipe);
         }
     }
@@ -635,7 +679,11 @@ public final class RecipeGuiManager implements Listener {
     }
 
     private List<MdvRecipe> currentCategoryRecipes(String category) {
-        return recipeManager.getVisibleByCategory(category);
+        return currentCategoryRecipes(category, false);
+    }
+
+    private List<MdvRecipe> currentCategoryRecipes(String category, boolean includeHidden) {
+        return includeHidden ? recipeManager.getByCategory(category) : recipeManager.getVisibleByCategory(category);
     }
 
     private List<MdvRecipe> currentSearchRecipes(ItemStack searchItem) {
@@ -643,11 +691,29 @@ public final class RecipeGuiManager implements Listener {
     }
 
     private ItemStack displayResult(MdvRecipe recipe) {
+        return displayResult(recipe, false);
+    }
+
+    private ItemStack displayResult(MdvRecipe recipe, boolean adminMode) {
         ItemStack item = itemResolver.buildItem(recipe.getResult());
         if (item == null || item.getType().isAir()) {
             item = new ItemStack(Material.BARRIER);
         }
-        return item.clone();
+        item = item.clone();
+        if (adminMode) {
+            ItemMeta meta = item.getItemMeta();
+            if (meta != null) {
+                List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
+                lore.add(color(""));
+                lore.add(color("&8ID: &7" + recipe.getId()));
+                lore.add(color("&8Estado: " + (recipe.isHidden() ? "&cOculta" : "&aVisible")));
+                lore.add(color("&eClick izquierdo: ver receta"));
+                lore.add(color("&6Click derecho: editar"));
+                meta.setLore(lore);
+                item.setItemMeta(meta);
+            }
+        }
+        return item;
     }
 
     private ItemStack ingredientDisplay(ItemSpec spec) {

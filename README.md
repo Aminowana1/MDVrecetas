@@ -1,30 +1,34 @@
-# MDVRecetas 0.4.0
+# MDVRecetas 0.4.1
 
-Motor de recetas custom para MDVCRAFT con guía visual tipo Terraria y editor admin básico.
+Motor de recetas custom para MDVCRAFT con guía visual tipo Terraria, buscador por ingrediente, hornos custom y editor in-game.
 
-## Nuevo en 0.4.0
+## Nuevo en 0.4.1
 
-- Limpieza de memoria temporal de hornos al romperse o explotar.
-- `/mdvrecetas editor` para crear recetas dentro del juego.
-- Selector de estación: mesa de crafteo, horno, alto horno, hoguera y ahumador.
-- Editor de receta con grilla 3x3, estación, resultado y botón de opciones.
-- Opciones editables: categoría, hidden, tipo SHAPED/SHAPELESS, tiempo de cocción, XP vanilla y XP de Forjador.
-- Guardado automático en `plugins/MDVRecetas/recipes/editor.yml`.
-- El editor detecta automáticamente VANILLA, MMOITEMS o ITEMSTACK serializado.
+- `/mdvrecetas admin`: catálogo admin de recetas.
+- El catálogo admin muestra recetas visibles y ocultas en sus categorías.
+- Click izquierdo sobre una receta admin: abre el visualizador normal.
+- Click derecho sobre una receta admin: abre el editor para modificar esa receta.
+- El editor puede guardar cambios sobre una receta existente.
+- Botón gris en edición: resetea la receta al estado original.
+- Botón rojo en edición: elimina la receta del YAML.
+- Opciones nuevas del editor:
+  - Asignar ID manual por chat.
+  - Reemplazar receta vanilla.
+  - Asignar key vanilla por chat, por ejemplo `minecraft:golden_apple`.
+- Si no asignas ID manual, el editor genera una ID automática como antes.
+- No permite guardar una ID duplicada.
 
 ## Comandos
 
-- `/mdvrecetas` abre la guía visual.
+- `/mdvrecetas` abre la guía de recetas.
+- `/mdvrecetas admin` abre el catálogo admin.
+- `/mdvrecetas editor` abre el editor para crear una receta nueva.
 - `/mdvrecetas reload` recarga recetas.
 - `/mdvrecetas debugitem` muestra información del item en mano.
-- `/mdvrecetas serializehand <id>` guarda un item exacto en Base64.
-- `/mdvrecetas editor` abre el editor admin.
+- `/mdvrecetas serializehand <id>` serializa el item en mano como ITEMSTACK.
 
-## Permisos
+## Notas
 
-- `mdvrecetas.use` permite abrir la guía.
-- `mdvrecetas.admin` permite reload, debug, serialize y editor.
+El editor guarda recetas en `plugins/MDVRecetas/recipes/editor.yml`.
 
-## Nota del editor 0.4.0
-
-El editor 0.4.0 es una primera versión funcional. Sirve para crear recetas simples y guardarlas en YAML. Todavía no incluye edición de recetas existentes, reemplazo vanilla desde GUI ni nombre manual de ID; genera IDs automáticos.
+Al editar una receta existente, MDVRecetas elimina la definición vieja de los YAML y guarda la nueva versión en `editor.yml`. Esto evita duplicados de ID.

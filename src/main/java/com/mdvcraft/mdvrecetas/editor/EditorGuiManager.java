@@ -3,6 +3,8 @@ package com.mdvcraft.mdvrecetas.editor;
 import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
 import com.mdvcraft.mdvrecetas.hook.MDVSocialHook;
 import com.mdvcraft.mdvrecetas.hook.MMOItemsHook;
+import com.mdvcraft.mdvrecetas.model.ItemSpec;
+import com.mdvcraft.mdvrecetas.model.MdvRecipe;
 import com.mdvcraft.mdvrecetas.model.RecipeType;
 import com.mdvcraft.mdvrecetas.model.StationType;
 import com.mdvcraft.mdvrecetas.recipe.MdvRecipeManager;
@@ -21,6 +23,7 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -57,6 +60,7 @@ public final class EditorGuiManager implements Listener {
     private final ItemResolver itemResolver;
     private final MDVSocialHook socialHook;
     private final Map<UUID, EditorSession> sessions = new HashMap<>();
+    private final Map<UUID, PendingInput> pendingInputs = new HashMap<>();
     private final Set<UUID> internalTransitions = new java.util.HashSet<>();
 
     public EditorGuiManager(MDVRecetasPlugin plugin, MdvRecipeManager recipeManager, ItemResolver itemResolver, MDVSocialHook socialHook) {
@@ -74,6 +78,18 @@ public final class EditorGuiManager implements Listener {
         renderStationSelect(inv);
         open(player, inv);
         socialHook.play(player, "open");
+    }
+
+
+    public void openEditRecipe(Player player, MdvRecipe recipe) {
+        if (recipe == null) {
+            player.sendMessage(prefix() + color("&cNo se pudo abrir la receta."));
+            socialHook.play(player, "invalid");
+            return;
+        }
+        EditorSession session = sessions.computeIfAbsent(player.getUniqueId(), ignored -> new EditorSession());
+        loadRecipeIntoSession(session, recipe);
+        openCreator(player, recipe.getStation(), true);
     }
 
     private void openCreator(Player player, StationType station, boolean keepSession) {
@@ -107,10 +123,15 @@ public final class EditorGuiManager implements Listener {
     public void closeAllAndReturnEditorItems() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getOpenInventory().getTopInventory().getHolder() instanceof EditorMenuHolder holder) {
+                EditorSession session = sessions.get(player.getUniqueId());
                 if (holder.getScreen() == EditorMenuHolder.Screen.CREATOR) {
-                    returnEditorItems(player, holder.getInventory());
+                    if (session == null || !session.isEditing()) {
+                        returnEditorItems(player, holder.getInventory());
+                    }
                 } else if (holder.getScreen() == EditorMenuHolder.Screen.OPTIONS) {
-                    returnSessionItems(player);
+                    if (session == null || !session.isEditing()) {
+                        returnSessionItems(player);
+                    }
                 }
                 player.closeInventory();
             }
@@ -182,10 +203,80 @@ public final class EditorGuiManager implements Listener {
         if (internalTransitions.remove(player.getUniqueId())) {
             return;
         }
+        EditorSession session = sessions.get(player.getUniqueId());
         if (holder.getScreen() == EditorMenuHolder.Screen.CREATOR) {
-            returnEditorItems(player, holder.getInventory());
+            if (session == null || !session.isEditing()) {
+                returnEditorItems(player, holder.getInventory());
+            }
         } else if (holder.getScreen() == EditorMenuHolder.Screen.OPTIONS) {
-            returnSessionItems(player);
+            if (session == null || !session.isEditing()) {
+                returnSessionItems(player);
+            }
+        }
+    }
+
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onChatInput(AsyncPlayerChatEvent event) {
+        Player player = event.getPlayer();
+        PendingInput input = pendingInputs.get(player.getUniqueId());
+        if (input == null) {
+            return;
+        }
+        event.setCancelled(true);
+        String message = event.getMessage() == null ? "" : event.getMessage().trim();
+        Bukkit.getScheduler().runTask(plugin, () -> handleChatInput(player, input, message));
+    }
+
+    private void handleChatInput(Player player, PendingInput input, String message) {
+        pendingInputs.remove(player.getUniqueId());
+        EditorSession session = sessions.computeIfAbsent(player.getUniqueId(), ignored -> new EditorSession());
+        if (message.equalsIgnoreCase("cancelar") || message.equalsIgnoreCase("cancel")) {
+            player.sendMessage(prefix() + color("&7Entrada cancelada."));
+            openCreator(player, session.getStation(), true);
+            return;
+        }
+        if (input == PendingInput.RECIPE_ID) {
+            String id = sanitizeRecipeId(message);
+            if (id.isBlank()) {
+                player.sendMessage(prefix() + color("&cID inválida. Usa letras, números, guion bajo, punto, barra o guion."));
+                openCreator(player, session.getStation(), true);
+                return;
+            }
+            if (recipeManager.recipeIdExists(id) && !id.equalsIgnoreCase(session.getEditingRecipeId())) {
+                player.sendMessage(prefix() + color("&cYa existe una receta con la ID &e" + id + "&c."));
+                openCreator(player, session.getStation(), true);
+                return;
+            }
+            session.setCustomRecipeId(id);
+            player.sendMessage(prefix() + color("&aID asignada: &e" + id));
+            openCreator(player, session.getStation(), true);
+            return;
+        }
+        if (input == PendingInput.VANILLA_KEY) {
+            String key = sanitizeVanillaKey(message);
+            if (key.isBlank() || !key.contains(":")) {
+                player.sendMessage(prefix() + color("&cKey inválida. Ejemplo: &eminecraft:golden_apple"));
+                openCreator(player, session.getStation(), true);
+                return;
+            }
+            session.setVanillaKey(key);
+            session.setReplaceVanilla(true);
+            player.sendMessage(prefix() + color("&aReceta vanilla a reemplazar: &e" + key));
+            openCreator(player, session.getStation(), true);
+        }
+    }
+
+
+    private void startChatInput(Player player, PendingInput input) {
+        pendingInputs.put(player.getUniqueId(), input);
+        internalTransitions.add(player.getUniqueId());
+        player.closeInventory();
+        Bukkit.getScheduler().runTask(plugin, () -> internalTransitions.remove(player.getUniqueId()));
+        if (input == PendingInput.RECIPE_ID) {
+            player.sendMessage(prefix() + color("&eEscribe una ID para esta receta o &ccancelar &epara volver."));
+        } else if (input == PendingInput.VANILLA_KEY) {
+            player.sendMessage(prefix() + color("&eEscribe la key vanilla a reemplazar. Ejemplo: &fminecraft:golden_apple&e. Usa &ccancelar &epara volver."));
         }
     }
 
@@ -220,13 +311,23 @@ public final class EditorGuiManager implements Listener {
             return;
         }
         if (slot == RESET_SLOT) {
-            returnEditorItems(player, holder.getInventory());
-            session.resetOptions();
-            openCreator(player, session.getStation(), true);
+            if (session.isEditing() && session.getOriginalRecipe() != null) {
+                holder.getInventory().clear();
+                loadRecipeIntoSession(session, session.getOriginalRecipe());
+                openCreator(player, session.getStation(), true);
+            } else {
+                returnEditorItems(player, holder.getInventory());
+                session.resetOptions();
+                openCreator(player, session.getStation(), true);
+            }
             socialHook.play(player, "back");
             return;
         }
         if (slot == CANCEL_SLOT) {
+            if (session.isEditing()) {
+                deleteEditingRecipe(player, session);
+                return;
+            }
             returnEditorItems(player, holder.getInventory());
             sessions.remove(player.getUniqueId());
             player.closeInventory();
@@ -234,7 +335,9 @@ public final class EditorGuiManager implements Listener {
             return;
         }
         if (slot == BACK_SLOT) {
-            returnEditorItems(player, holder.getInventory());
+            if (!session.isEditing()) {
+                returnEditorItems(player, holder.getInventory());
+            }
             sessions.remove(player.getUniqueId());
             openStationSelect(player);
             return;
@@ -259,6 +362,14 @@ public final class EditorGuiManager implements Listener {
         } else if (slot == 30 && session.getStation().isCookingStation()) {
             float delta = click.isShiftClick() ? 1.0F : 0.1F;
             session.setVanillaExp(session.getVanillaExp() + (click.isRightClick() ? -delta : delta));
+        } else if (slot == 32) {
+            session.setReplaceVanilla(!session.isReplaceVanilla());
+        } else if (slot == 34) {
+            startChatInput(player, PendingInput.RECIPE_ID);
+            return;
+        } else if (slot == 36) {
+            startChatInput(player, PendingInput.VANILLA_KEY);
+            return;
         } else if (slot == 49) {
             openCreator(player, session.getStation(), true);
             return;
@@ -296,14 +407,20 @@ public final class EditorGuiManager implements Listener {
         )));
         inv.setItem(RESULT_SLOT, null);
         inv.setItem(OPTIONS_SLOT, button(Material.SPYGLASS, "&bOpciones de receta", List.of(
+                "&7ID: &f" + currentSessionIdPreview(session),
                 "&7Categoría: &f" + prettyCategory(session.getCategory()),
                 "&7Oculta: " + (session.isHidden() ? "&aSí" : "&cNo"),
                 "&7XP Forjador: &e" + format(session.getForjadorExp()),
+                "&7Reemplaza vanilla: " + (session.isReplaceVanilla() ? "&aSí" : "&cNo"),
                 "", "&eClick para abrir."
         )));
         inv.setItem(SAVE_SLOT, button(Material.LIME_DYE, "&aGuardar receta", List.of("&7Guarda la receta en YAML.", "&7Si está incompleta no se guardará.")));
-        inv.setItem(CANCEL_SLOT, button(Material.RED_DYE, "&cCancelar", List.of("&7Devuelve los items y cierra el editor.")));
-        inv.setItem(RESET_SLOT, button(Material.GRAY_DYE, "&7Resetear", List.of("&7Devuelve los items y resetea opciones.")));
+        inv.setItem(CANCEL_SLOT, button(Material.RED_DYE, session.isEditing() ? "&cEliminar receta" : "&cCancelar", session.isEditing()
+                ? List.of("&7Elimina esta receta del YAML.", "&cNo se puede deshacer fácilmente.")
+                : List.of("&7Devuelve los items y cierra el editor.")));
+        inv.setItem(RESET_SLOT, button(Material.GRAY_DYE, "&7Resetear", session.isEditing()
+                ? List.of("&7Restaura la receta original", "&7antes de guardar cambios.")
+                : List.of("&7Devuelve los items y resetea opciones.")));
         inv.setItem(BACK_SLOT, button(Material.BARRIER, "&eVolver", List.of("&7Regresa a seleccionar estación.")));
         restoreSessionItems(inv, session);
     }
@@ -335,7 +452,92 @@ public final class EditorGuiManager implements Listener {
                     "", "&eIzq: +0.1", "&eDer: -0.1", "&eShift: +/-1"
             )));
         }
+        inv.setItem(32, button(session.isReplaceVanilla() ? Material.LIME_DYE : Material.RED_DYE, "&eReemplazar receta vanilla", List.of(
+                "&7Estado: " + (session.isReplaceVanilla() ? "&aSí" : "&cNo"),
+                "&7Key: &f" + (session.getVanillaKey().isBlank() ? "Sin asignar" : session.getVanillaKey()),
+                "", "&eClick para alternar.", "&6Usa el botón de key para asignarla."
+        )));
+        inv.setItem(34, button(Material.NAME_TAG, "&eID de receta", List.of(
+                "&7Actual: &f" + currentSessionIdPreview(session),
+                "&8Si no asignas una ID, se genera automática.",
+                "", "&eClick para escribir una ID."
+        )));
+        inv.setItem(36, button(Material.PAPER, "&eKey vanilla", List.of(
+                "&7Actual: &f" + (session.getVanillaKey().isBlank() ? "Sin asignar" : session.getVanillaKey()),
+                "&7Ejemplo: &eminecraft:golden_apple",
+                "", "&eClick para escribir la key."
+        )));
         inv.setItem(49, button(Material.BARRIER, "&eVolver", List.of("&7Regresa al editor de receta.")));
+    }
+
+
+    private void deleteEditingRecipe(Player player, EditorSession session) {
+        String id = session.getEditingRecipeId();
+        if (id == null || id.isBlank()) {
+            socialHook.play(player, "invalid");
+            return;
+        }
+        boolean deleted = recipeManager.deleteRecipeFromFiles(id);
+        int count = recipeManager.reloadRecipes();
+        sessions.remove(player.getUniqueId());
+        player.closeInventory();
+        if (deleted) {
+            player.sendMessage(prefix() + color("&aReceta &e" + id + " &aeliminada. Recetas cargadas: &e" + count));
+            socialHook.play(player, "confirm");
+        } else {
+            player.sendMessage(prefix() + color("&cNo se encontró la receta &e" + id + " &cen archivos YAML."));
+            socialHook.play(player, "invalid");
+        }
+    }
+
+    private void loadRecipeIntoSession(EditorSession session, MdvRecipe recipe) {
+        session.clearItems();
+        session.setStation(recipe.getStation());
+        session.setRecipeType(recipe.getType());
+        session.setCategory(recipe.getCategory());
+        session.setHidden(recipe.isHidden());
+        session.setCookingTime(recipe.getCookingTime());
+        session.setVanillaExp(recipe.getCookingVanillaExp());
+        session.setForjadorExp(recipe.getForjador() == null ? 0.0D : recipe.getForjador().getExp());
+        session.setCustomRecipeId(recipe.getId());
+        session.setEditingRecipeId(recipe.getId());
+        session.setOriginalRecipe(recipe);
+        session.setReplaceVanilla(recipe.isReplaceVanilla());
+        session.setVanillaKey(recipe.getVanillaKey() == null ? "" : recipe.getVanillaKey().toString());
+
+        if (recipe.getType() == RecipeType.COOKING) {
+            putSpecInSession(session, COOKING_INPUT_SLOT, recipe.getCookingIngredient());
+        } else if (recipe.getType() == RecipeType.SHAPED) {
+            for (int i = 0; i < Math.min(9, SHAPED_SLOTS.length); i++) {
+                int row = i / 3;
+                int col = i % 3;
+                String line = row < recipe.getShape().size() ? recipe.getShape().get(row) : "   ";
+                char symbol = col < line.length() ? line.charAt(col) : ' ';
+                putSpecInSession(session, SHAPED_SLOTS[i], recipe.getShapedIngredients().get(symbol));
+            }
+        } else {
+            int index = 0;
+            for (ItemSpec spec : recipe.getShapelessIngredients().values()) {
+                if (index >= SHAPED_SLOTS.length) {
+                    break;
+                }
+                putSpecInSession(session, SHAPED_SLOTS[index++], spec);
+            }
+        }
+        putSpecInSession(session, RESULT_SLOT, recipe.getResult());
+    }
+
+    private void putSpecInSession(EditorSession session, int slot, ItemSpec spec) {
+        if (spec == null) {
+            return;
+        }
+        ItemStack item = itemResolver.buildItem(spec);
+        if (item == null || item.getType().isAir()) {
+            return;
+        }
+        item = item.clone();
+        item.setAmount(Math.max(1, spec.getAmount()));
+        session.getItems().put(slot, item);
     }
 
     private void saveRecipe(Player player, Inventory inv, EditorSession session) {
@@ -346,7 +548,17 @@ public final class EditorGuiManager implements Listener {
                 socialHook.play(player, "invalid");
                 return;
             }
-            String id = generateRecipeId(session);
+            String id = determineRecipeId(session);
+            if (recipeManager.recipeIdExists(id) && !id.equalsIgnoreCase(session.getEditingRecipeId())) {
+                player.sendMessage(prefix() + color("&cYa existe una receta con la ID &e" + id + "&c."));
+                socialHook.play(player, "invalid");
+                return;
+            }
+            if (session.isReplaceVanilla() && session.getVanillaKey().isBlank()) {
+                player.sendMessage(prefix() + color("&cActiva reemplazar vanilla solo si asignaste una key. Ejemplo: &eminecraft:golden_apple"));
+                socialHook.play(player, "invalid");
+                return;
+            }
             File file = new File(new File(plugin.getDataFolder(), plugin.getConfig().getString("settings.recipe-folder", "recipes")), "editor.yml");
             YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
             String base = "recipes." + id;
@@ -355,6 +567,12 @@ public final class EditorGuiManager implements Listener {
             yaml.set(base + ".category", session.getCategory());
             yaml.set(base + ".hidden", session.isHidden());
             yaml.set(base + ".type", session.getRecipeType().name());
+            yaml.set(base + ".replace-vanilla.enabled", session.isReplaceVanilla());
+            if (session.isReplaceVanilla()) {
+                yaml.set(base + ".replace-vanilla.vanilla-key", session.getVanillaKey());
+            } else {
+                yaml.set(base + ".replace-vanilla.vanilla-key", null);
+            }
 
             if (session.getRecipeType() == RecipeType.COOKING) {
                 ItemStack input = inv.getItem(COOKING_INPUT_SLOT);
@@ -386,11 +604,19 @@ public final class EditorGuiManager implements Listener {
             yaml.set(base + ".forjador.exp", session.getForjadorExp());
             yaml.set(base + ".forjador.signature", false);
             yaml.set(base + ".forjador.modifiers", false);
+            if (session.isEditing()) {
+                if (!id.equalsIgnoreCase(session.getEditingRecipeId())) {
+                    yaml.set("recipes." + session.getEditingRecipeId(), null);
+                }
+                recipeManager.deleteRecipeFromFiles(session.getEditingRecipeId());
+            }
             yaml.save(file);
 
             int count = recipeManager.reloadRecipes();
             player.sendMessage(prefix() + color("&aReceta guardada como &e" + id + "&a. Recetas cargadas: &e" + count + "&a."));
-            returnEditorItems(player, inv);
+            if (!session.isEditing()) {
+                returnEditorItems(player, inv);
+            }
             sessions.remove(player.getUniqueId());
             player.closeInventory();
             socialHook.play(player, "confirm");
@@ -605,9 +831,50 @@ public final class EditorGuiManager implements Listener {
         session.setCategory(ids.get(next));
     }
 
+    private String determineRecipeId(EditorSession session) {
+        String custom = session.getCustomRecipeId();
+        if (custom != null && !custom.isBlank()) {
+            return sanitizeRecipeId(custom);
+        }
+        String id;
+        do {
+            id = generateRecipeId(session);
+        } while (recipeManager.recipeIdExists(id));
+        return id;
+    }
+
+    private String currentSessionIdPreview(EditorSession session) {
+        String custom = session.getCustomRecipeId();
+        if (custom != null && !custom.isBlank()) {
+            return sanitizeRecipeId(custom);
+        }
+        if (session.getEditingRecipeId() != null && !session.getEditingRecipeId().isBlank()) {
+            return session.getEditingRecipeId();
+        }
+        return "Automática";
+    }
+
     private String generateRecipeId(EditorSession session) {
         String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         return ("editor_" + session.getStation().name() + "_" + time).toLowerCase(Locale.ROOT);
+    }
+
+    private String sanitizeRecipeId(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return raw.toLowerCase(Locale.ROOT).trim().replaceAll("[^a-z0-9_./-]", "_").replaceAll("_+", "_");
+    }
+
+    private String sanitizeVanillaKey(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String value = raw.toLowerCase(Locale.ROOT).trim().replaceAll("[^a-z0-9_./:-]", "_");
+        if (!value.contains(":")) {
+            value = "minecraft:" + value;
+        }
+        return value;
     }
 
     private void fill(Inventory inv) {
@@ -722,6 +989,11 @@ public final class EditorGuiManager implements Listener {
 
     private String color(String text) {
         return ColorUtil.color(text == null ? "" : text);
+    }
+
+    private enum PendingInput {
+        RECIPE_ID,
+        VANILLA_KEY
     }
 
     private record CategoryInfo(String id, String displayName) {

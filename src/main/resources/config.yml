@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVRecetas 0.4.0
+# MDVRecetas 0.4.1
 # Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
@@ -32,6 +32,8 @@ gui:
     category: '&8&lRecetas %category%'
     search: '&8&lBuscador de Recetas'
     recipe: '&8&lVista de Receta'
+    admin-main: '&8&lAdmin Recetas'
+    admin-category: '&8&lAdmin %category%'
 
   buttons:
     back-texture: 'eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmQ2OWUwNmU1ZGFkZmQ4NGU1ZjNkMWMyMTA2M2YyNTUzYjJmYTk0NWVlMWQ0ZDcxNTJmZGM1NDI1YmMxMmE5In19fQ=='

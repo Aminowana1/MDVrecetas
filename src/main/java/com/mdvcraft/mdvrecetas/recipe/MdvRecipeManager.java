@@ -51,6 +51,41 @@ public final class MdvRecipeManager {
         return loaded;
     }
 
+
+    public boolean recipeIdExists(String id) {
+        if (id == null || id.isBlank()) {
+            return false;
+        }
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (recipe.getId().equalsIgnoreCase(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean deleteRecipeFromFiles(String id) {
+        if (id == null || id.isBlank()) {
+            return false;
+        }
+        File folder = new File(plugin.getDataFolder(), plugin.getConfig().getString("settings.recipe-folder", "recipes"));
+        boolean deleted = false;
+        for (File file : listYamlFiles(folder)) {
+            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+            String path = "recipes." + id;
+            if (yaml.contains(path)) {
+                yaml.set(path, null);
+                try {
+                    yaml.save(file);
+                    deleted = true;
+                } catch (Exception exception) {
+                    plugin.getLogger().warning("Could not delete recipe '" + id + "' from " + file.getName() + ": " + exception.getMessage());
+                }
+            }
+        }
+        return deleted;
+    }
+
     public Optional<MdvRecipe> getByKey(NamespacedKey key) {
         return Optional.ofNullable(recipesByKey.get(key));
     }
