@@ -51,7 +51,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.3 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.4 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
@@ -185,9 +185,10 @@ forjador-modifiers:
   level:
     min: 1
     max: 50
-    # Requiere PlaceholderAPI + MMOCore expansion/placeholders funcionando.
-    # Si no puede leerlo, usa nivel 1.
-    placeholder: '%mmocore_profession_level_forjador%'
+    # ID interno de la profesion en MMOCore.
+    profession-id: forjador
+    # Fallback por PlaceholderAPI. MDVRecetas intenta primero leer MMOCore por API directa.
+    placeholder: '%mmocore_profession_forjador%'
 
   chances:
     # Nivel 1: muchas chances de malo/normal, poco bueno.

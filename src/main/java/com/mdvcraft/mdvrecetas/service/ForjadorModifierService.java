@@ -388,34 +388,129 @@ public final class ForjadorModifierService {
     }
 
     private int readForjadorLevel(Player player) {
-        String placeholder = getString("forjador-modifiers.level.placeholder", "%mmocore_profession_level_forjador%");
-        if (placeholder == null || placeholder.isBlank()) {
-            return 1;
+        int min = getInt("forjador-modifiers.level.min", 1);
+        int max = getInt("forjador-modifiers.level.max", 50);
+
+        int apiLevel = readForjadorLevelFromMMOCoreApi(player);
+        if (apiLevel > 0) {
+            return clampLevel(apiLevel, min, max);
         }
+
+        int papiLevel = readForjadorLevelFromPapi(player);
+        if (papiLevel > 0) {
+            return clampLevel(papiLevel, min, max);
+        }
+
+        return min;
+    }
+
+    private int readForjadorLevelFromPapi(Player player) {
+        String professionId = getForjadorProfessionId();
+        List<String> placeholders = new ArrayList<>();
+        String configured = getString("forjador-modifiers.level.placeholder", "%mmocore_profession_" + professionId + "%");
+        if (configured != null && !configured.isBlank()) {
+            placeholders.add(configured);
+        }
+        placeholders.add("%mmocore_profession_" + professionId + "%");
+        placeholders.add("%mmocore_profession_level_" + professionId + "%");
+
         try {
-            if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-                Class<?> papi = Class.forName("me.clip.placeholderapi.PlaceholderAPI");
-                Method setPlaceholders = papi.getMethod("setPlaceholders", Player.class, String.class);
+            if (!Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                return -1;
+            }
+            Class<?> papi = Class.forName("me.clip.placeholderapi.PlaceholderAPI");
+            Method setPlaceholders = papi.getMethod("setPlaceholders", Player.class, String.class);
+            for (String placeholder : placeholders) {
                 Object parsed = setPlaceholders.invoke(null, player, placeholder);
-                return parseLevel(String.valueOf(parsed));
+                int level = parseLevelStrict(String.valueOf(parsed));
+                if (level > 0) {
+                    return level;
+                }
             }
         } catch (Throwable ignored) {
         }
-        return 1;
+        return -1;
     }
 
-    private int parseLevel(String raw) {
-        if (raw == null) {
-            return 1;
+    private int readForjadorLevelFromMMOCoreApi(Player player) {
+        try {
+            if (player == null || !Bukkit.getPluginManager().isPluginEnabled("MMOCore")) {
+                return -1;
+            }
+            Class<?> playerDataClass = Class.forName("net.Indyuce.mmocore.api.player.PlayerData");
+            try {
+                Method has = playerDataClass.getMethod("has", Player.class);
+                Object loaded = has.invoke(null, player);
+                if (loaded instanceof Boolean && !((Boolean) loaded)) {
+                    return -1;
+                }
+            } catch (NoSuchMethodException ignored) {
+                // Older/newer MMOCore builds may not expose this exact method; try get() anyway.
+            }
+
+            Method get = playerDataClass.getMethod("get", org.bukkit.OfflinePlayer.class);
+            Object playerData = get.invoke(null, player);
+            if (playerData == null) {
+                return -1;
+            }
+            Object professions = playerData.getClass().getMethod("getCollectionSkills").invoke(playerData);
+            if (professions == null) {
+                return -1;
+            }
+            Object level = professions.getClass().getMethod("getLevel", String.class).invoke(professions, getForjadorProfessionId());
+            if (level instanceof Number number) {
+                return number.intValue();
+            }
+            return parseLevelStrict(String.valueOf(level));
+        } catch (Throwable ignored) {
+            return -1;
         }
-        String cleaned = raw.replaceAll("[^0-9]", "");
+    }
+
+    public List<String> debugForjadorLevel(Player player) {
+        String professionId = getForjadorProfessionId();
+        List<String> lines = new ArrayList<>();
+        lines.add("&6Debug Forjador");
+        lines.add("&7Profession ID: &e" + professionId);
+        lines.add("&7MMOCore API level: &e" + readForjadorLevelFromMMOCoreApi(player));
+        lines.add("&7PAPI configured: &e" + getString("forjador-modifiers.level.placeholder", "%mmocore_profession_" + professionId + "%"));
+        lines.add("&7PAPI level parsed: &e" + readForjadorLevelFromPapi(player));
+        lines.add("&7Final level usado: &a" + readForjadorLevel(player));
+        lines.add("&7Dañado: &c" + formatCurrentChance(player, "bad") + "%");
+        lines.add("&7Estable: &e" + formatCurrentChance(player, "normal") + "%");
+        lines.add("&7Refinado: &a" + formatCurrentChance(player, "good") + "%");
+        lines.add("&7Magistral: &2" + formatCurrentChance(player, "very-good") + "%");
+        return lines;
+    }
+
+    private String getForjadorProfessionId() {
+        String fromModifiers = getString("forjador-modifiers.level.profession-id", null);
+        if (fromModifiers != null && !fromModifiers.isBlank()) {
+            return fromModifiers.toLowerCase(Locale.ROOT);
+        }
+        return plugin.getConfig().getString("forjador.profession-id", "forjador").toLowerCase(Locale.ROOT);
+    }
+
+    private int clampLevel(int level, int min, int max) {
+        return Math.max(min, Math.min(max, level));
+    }
+
+    private int parseLevelStrict(String raw) {
+        if (raw == null) {
+            return -1;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isBlank() || trimmed.contains("%")) {
+            return -1;
+        }
+        String cleaned = trimmed.replaceAll("[^0-9]", "");
         if (cleaned.isBlank()) {
-            return 1;
+            return -1;
         }
         try {
             return Math.max(1, Integer.parseInt(cleaned));
         } catch (NumberFormatException exception) {
-            return 1;
+            return -1;
         }
     }
 

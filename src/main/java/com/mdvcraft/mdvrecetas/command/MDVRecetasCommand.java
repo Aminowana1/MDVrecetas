@@ -38,6 +38,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
             case "open", "menu", "guia", "guide" -> handleOpen(sender);
             case "reload" -> handleReload(sender);
             case "debugitem" -> handleDebugItem(sender);
+            case "debugforjador", "debugforge", "debuglevel" -> handleDebugForjador(sender);
             case "editor", "edit" -> handleEditor(sender);
             case "admin" -> handleAdmin(sender);
             case "serializehand" -> handleSerializeHand(sender, args);
@@ -125,6 +126,20 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void handleDebugForjador(CommandSender sender) {
+        if (!sender.hasPermission("mdvrecetas.admin")) {
+            message(sender, "messages.no-permission");
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            message(sender, "messages.player-only");
+            return;
+        }
+        for (String line : plugin.getForjadorModifierService().debugForjadorLevel(player)) {
+            sender.sendMessage(prefix() + ColorUtil.color(line));
+        }
+    }
+
     private void handleSerializeHand(CommandSender sender, String[] args) {
         if (!sender.hasPermission("mdvrecetas.admin")) {
             message(sender, "messages.no-permission");
@@ -185,6 +200,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " &7- Abre la guía de recetas."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " reload &7- Recarga recetas."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " debugitem &7- Revisa el item en mano."));
+        sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " debugforjador &7- Revisa nivel/probabilidades de Forjador."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " admin &7- Abre el catálogo admin de recetas."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " editor &7- Abre el editor admin de recetas."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " serializehand <id> &7- Guarda un ItemStack exacto."));
@@ -202,7 +218,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             List<String> result = new ArrayList<>();
-            for (String option : List.of("open", "reload", "debugitem", "serializehand", "editor", "admin", "help")) {
+            for (String option : List.of("open", "reload", "debugitem", "debugforjador", "serializehand", "editor", "admin", "help")) {
                 if (option.startsWith(args[0].toLowerCase(Locale.ROOT))) {
                     result.add(option);
                 }

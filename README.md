@@ -1,8 +1,8 @@
-# MDVRecetas 0.6.3
+# MDVRecetas 0.6.4
 
 Motor de recetas custom para MDVCRAFT.
 
-## Nuevo en 0.6.3
+## Nuevo en 0.6.4
 
 - Hotfix visual de modificadores: si el modifier tiene prefix, MDVRecetas lo añade al nombre del item crafteado.
   - Ejemplo: `&8Oxidado` + `&aCoraza de Soldado` → `&8Oxidado &aCoraza de Soldado`.
@@ -88,7 +88,7 @@ forjador:
 - `/mdvrecetas serializehand <id>`
 
 
-## MDVRecetas 0.6.3
+## MDVRecetas 0.6.4
 
 Hotfix y placeholders:
 
@@ -130,3 +130,11 @@ Estable = normal
 Refinado = good
 Magistral = very-good
 ```
+
+## 0.6.4
+
+- Hotfix de nivel de Forjador para placeholders/probabilidades.
+- MDVRecetas ahora intenta leer el nivel de profesión directamente desde la API de MMOCore por reflexión.
+- PlaceholderAPI queda como fallback.
+- Nuevo comando admin: `/mdvrecetas debugforjador` para revisar qué nivel está leyendo y qué probabilidades calcula.
+- `modifiers.yml` ahora incluye `forjador-modifiers.level.profession-id`.
