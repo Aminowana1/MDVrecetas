@@ -1,0 +1,147 @@
+# ==========================================================
+# Modificadores por Forjador
+#
+# Este archivo separa la tabla de modificadores de config.yml.
+# MDVRecetas NO usa las probabilidades internas de MMOItems.
+# Solo toma la lista de modificadores que el item acepta y luego
+# elige uno usando estas calidades y el nivel de Forjador.
+#
+# Para activar en una receta:
+# forjador:
+#   modifiers: true
+#
+# Bloqueados: nunca salen por crafteo normal.
+# ==========================================================
+forjador-modifiers:
+  enabled: true
+
+  level:
+    min: 1
+    max: 50
+    # Requiere PlaceholderAPI + MMOCore expansion/placeholders funcionando.
+    # Si no puede leerlo, usa nivel 1.
+    placeholder: '%mmocore_profession_level_forjador%'
+
+  chances:
+    # Nivel 1: muchas chances de malo/normal, poco bueno.
+    level-1:
+      bad: 40
+      normal: 50
+      good: 9
+      very-good: 1
+
+    # Nivel 50: sigue sin garantizar perfecto, pero mejora mucho.
+    level-50:
+      bad: 5
+      normal: 45
+      good: 35
+      very-good: 15
+
+  # Si un modificador existe en el item pero no está en ninguna lista,
+  # por defecto NO sale. Puedes poner normal/bad/good/very-good si quieres.
+  unclassified-as: none
+
+  # Además de IDs exactos bloqueados, cualquier ID que contenga estas palabras se bloquea.
+  blocked-contains:
+    - reliquia
+    - simbionte
+
+  default-weight:
+    bad: 1
+    normal: 1
+    good: 1
+    very-good: 1
+
+  # Pesos opcionales por modificador concreto. Si no aparece aquí, usa default-weight.
+  weights: {}
+
+  # Opcional: si MDVRecetas no puede leer automaticamente el prefix desde MMOItems,
+  # puedes forzarlo aqui. Normalmente puedes dejarlo vacio.
+  # Ejemplo:
+  # prefix-overrides:
+  #   t1_tanque_oxidado: '&8Oxidado'
+  prefix-overrides:
+    # TANQUE
+    t1_tanque_oxidado: '&8Oxidado'
+    t1_tanque_abollado: '&7Abollado'
+    t1_tanque_gastado: '&7Gastado'
+    t1_tanque_pulido: '&fPulido'
+    t1_tanque_resistente: '&aResistente'
+    t1_tanque_reforzado: '&2Reforzado'
+
+    # RANGO
+    t1_rango_torcido: '&8Torcido'
+    t1_rango_mal_ajustado: '&7Mal Ajustado'
+    t1_rango_gastado: '&7Gastado'
+    t1_rango_estable: '&fEstable'
+    t1_rango_certero: '&aCertero'
+    t1_rango_preciso: '&2Preciso'
+
+    # MAGO
+    t1_mago_apagado: '&8Apagado'
+    t1_mago_inestable: '&7Inestable'
+    t1_mago_gastado: '&7Gastado'
+    t1_mago_afinado: '&fAfinado'
+    t1_mago_canalizador: '&aCanalizador'
+    t1_mago_imbuido: '&2Imbuido'
+
+    # PICARO
+    t1_picaro_torpe: '&8Torpe'
+    t1_picaro_descuidado: '&7Descuidado'
+    t1_picaro_gastado: '&7Gastado'
+    t1_picaro_agil: '&fAgil'
+    t1_picaro_preciso: '&aPreciso'
+    t1_picaro_letal: '&2Letal'
+
+    # ARMAS T1 GENERICAS
+    arma_t1_mellada: '&8Mellada'
+    arma_t1_desgastada: '&7Desgastada'
+    arma_t1_tosca: '&7Tosca'
+    arma_t1_afilada: '&fAfilada'
+    arma_t1_ligera: '&aLigera'
+    arma_t1_reforzada: '&2Reforzada'
+
+  qualities:
+    bad:
+      - t1_tanque_oxidado
+      - t1_tanque_abollado
+      - t1_tanque_gastado
+      - t1_rango_torcido
+      - t1_rango_mal_ajustado
+      - t1_rango_gastado
+      - t1_mago_apagado
+      - t1_mago_inestable
+      - t1_mago_gastado
+      - t1_picaro_torpe
+      - t1_picaro_descuidado
+      - t1_picaro_gastado
+      - arma_t1_mellada
+      - arma_t1_desgastada
+      - arma_t1_tosca
+
+    normal:
+      - t1_normal
+      - arma_t1_normal
+
+    good:
+      - t1_tanque_pulido
+      - t1_tanque_resistente
+      - t1_rango_estable
+      - t1_rango_certero
+      - t1_mago_afinado
+      - t1_mago_canalizador
+      - t1_picaro_agil
+      - t1_picaro_preciso
+      - arma_t1_afilada
+      - arma_t1_ligera
+
+    very-good:
+      - t1_tanque_reforzado
+      - t1_rango_preciso
+      - t1_mago_imbuido
+      - t1_picaro_letal
+      - arma_t1_reforzada
+
+    blocked:
+      - reliquia
+      - simbionte

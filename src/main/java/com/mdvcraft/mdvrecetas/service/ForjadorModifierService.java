@@ -4,9 +4,12 @@ import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
 import com.mdvcraft.mdvrecetas.model.ItemKind;
 import com.mdvcraft.mdvrecetas.model.ItemSpec;
 import com.mdvcraft.mdvrecetas.model.MdvRecipe;
+import com.mdvcraft.mdvrecetas.util.ColorUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -16,6 +19,7 @@ import org.bukkit.persistence.PersistentDataType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -38,6 +42,7 @@ public final class ForjadorModifierService {
     private final NamespacedKey modifierIdKey;
     private final NamespacedKey modifierQualityKey;
     private final NamespacedKey modifierRecipeKey;
+    private FileConfiguration modifierConfig;
 
     public ForjadorModifierService(MDVRecetasPlugin plugin) {
         this.plugin = plugin;
@@ -45,13 +50,19 @@ public final class ForjadorModifierService {
         this.modifierIdKey = new NamespacedKey(plugin, "forjador_modifier_id");
         this.modifierQualityKey = new NamespacedKey(plugin, "forjador_modifier_quality");
         this.modifierRecipeKey = new NamespacedKey(plugin, "forjador_modifier_recipe");
+        reload();
+    }
+
+    public void reload() {
+        File file = new File(plugin.getDataFolder(), "modifiers.yml");
+        this.modifierConfig = YamlConfiguration.loadConfiguration(file);
     }
 
     public ItemStack applyModifierIfNeeded(ItemStack original, Player player, MdvRecipe recipe) {
         if (original == null || original.getType().isAir() || player == null || recipe == null || recipe.getForjador() == null) {
             return original;
         }
-        if (!plugin.getConfig().getBoolean("forjador-modifiers.enabled", true)) {
+        if (!getBoolean("forjador-modifiers.enabled", true)) {
             return original;
         }
         if (!recipe.getForjador().isModifiers()) {
@@ -78,6 +89,7 @@ public final class ForjadorModifierService {
             return markAsRolled(original.clone(), "failed:" + selected.get().id(), selected.get().quality(), recipe.getId());
         }
         modified.setAmount(Math.max(1, original.getAmount()));
+        applyModifierPrefix(modified, selected.get());
         return markAsRolled(modified, selected.get().id(), selected.get().quality(), recipe.getId());
     }
 
@@ -195,13 +207,13 @@ public final class ForjadorModifierService {
                 return quality;
             }
         }
-        String fallback = plugin.getConfig().getString("forjador-modifiers.unclassified-as", "none");
+        String fallback = getString("forjador-modifiers.unclassified-as", "none");
         return ModifierQuality.fromConfig(fallback);
     }
 
     private Set<String> configuredIds(String path) {
         Set<String> values = new LinkedHashSet<>();
-        for (String value : plugin.getConfig().getStringList(path)) {
+        for (String value : getStringList(path)) {
             if (value != null && !value.isBlank()) {
                 values.add(normalize(value));
             }
@@ -211,7 +223,7 @@ public final class ForjadorModifierService {
 
     private List<String> configuredContains(String path) {
         List<String> values = new ArrayList<>();
-        for (String value : plugin.getConfig().getStringList(path)) {
+        for (String value : getStringList(path)) {
             if (value != null && !value.isBlank()) {
                 values.add(normalize(value));
             }
@@ -233,10 +245,10 @@ public final class ForjadorModifierService {
 
     private double configuredWeight(String id, ModifierQuality quality) {
         String direct = "forjador-modifiers.weights." + id;
-        if (plugin.getConfig().isDouble(direct) || plugin.getConfig().isInt(direct)) {
-            return Math.max(0.0001D, plugin.getConfig().getDouble(direct));
+        if (isNumber(direct)) {
+            return Math.max(0.0001D, getDouble(direct, 0.0D));
         }
-        return Math.max(0.0001D, plugin.getConfig().getDouble("forjador-modifiers.default-weight." + quality.configKey(), 1.0D));
+        return Math.max(0.0001D, getDouble("forjador-modifiers.default-weight." + quality.configKey(), 1.0D));
     }
 
     private ModifierCandidate weightedPick(List<ModifierCandidate> candidates) {
@@ -256,8 +268,8 @@ public final class ForjadorModifierService {
     }
 
     private ModifierQuality rollQuality(int level) {
-        int min = plugin.getConfig().getInt("forjador-modifiers.level.min", 1);
-        int max = plugin.getConfig().getInt("forjador-modifiers.level.max", 50);
+        int min = getInt("forjador-modifiers.level.min", 1);
+        int max = getInt("forjador-modifiers.level.max", 50);
         double t = max <= min ? 1.0D : (Math.max(min, Math.min(max, level)) - min) / (double) (max - min);
 
         Map<ModifierQuality, Double> low = readChancePoint("forjador-modifiers.chances.level-1");
@@ -287,7 +299,7 @@ public final class ForjadorModifierService {
     private Map<ModifierQuality, Double> readChancePoint(String path) {
         Map<ModifierQuality, Double> values = new EnumMap<>(ModifierQuality.class);
         for (ModifierQuality quality : ModifierQuality.rollableValues()) {
-            values.put(quality, plugin.getConfig().getDouble(path + "." + quality.configKey(), defaultChance(path, quality)));
+            values.put(quality, getDouble(path + "." + quality.configKey(), defaultChance(path, quality)));
         }
         return values;
     }
@@ -349,7 +361,7 @@ public final class ForjadorModifierService {
     }
 
     private int readForjadorLevel(Player player) {
-        String placeholder = plugin.getConfig().getString("forjador-modifiers.level.placeholder", "%mmocore_profession_level_forjador%");
+        String placeholder = getString("forjador-modifiers.level.placeholder", "%mmocore_profession_level_forjador%");
         if (placeholder == null || placeholder.isBlank()) {
             return 1;
         }
@@ -406,6 +418,158 @@ public final class ForjadorModifierService {
         pdc.set(modifierRecipeKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
         item.setItemMeta(meta);
         return item;
+    }
+
+
+    private void applyModifierPrefix(ItemStack item, SelectedModifier selected) {
+        if (item == null || item.getType().isAir() || selected == null) {
+            return;
+        }
+        String prefix = readPrefixFormat(selected);
+        if (prefix == null || prefix.isBlank()) {
+            return;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return;
+        }
+        String currentName = meta.hasDisplayName() ? meta.getDisplayName() : null;
+        if (currentName == null || currentName.isBlank()) {
+            return;
+        }
+        String plainPrefix = ColorUtil.stripColor(prefix).trim();
+        String plainName = ColorUtil.stripColor(currentName).trim();
+        if (!plainPrefix.isBlank() && plainName.toLowerCase(Locale.ROOT).startsWith(plainPrefix.toLowerCase(Locale.ROOT))) {
+            return;
+        }
+        meta.setDisplayName(ColorUtil.color(prefix).trim() + " " + currentName);
+        item.setItemMeta(meta);
+    }
+
+    private String readPrefixFormat(SelectedModifier selected) {
+        String override = getString("forjador-modifiers.prefix-overrides." + selected.id(), "");
+        if (override != null && !override.isBlank()) {
+            return override;
+        }
+        return readPrefixFormatFromNode(selected.node());
+    }
+
+    private String readPrefixFormatFromNode(Object node) {
+        if (node == null) {
+            return null;
+        }
+        String direct = readStringPath(node, "prefix.format");
+        if (direct != null && !direct.isBlank()) {
+            return direct;
+        }
+        for (String methodName : List.of("getConfig", "getConfiguration", "getSection", "getYaml", "getObject")) {
+            try {
+                Object config = node.getClass().getMethod(methodName).invoke(node);
+                String fromConfig = readStringPath(config, "prefix.format");
+                if (fromConfig != null && !fromConfig.isBlank()) {
+                    return fromConfig;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        try {
+            Object modifier = node.getClass().getMethod("getModifier").invoke(node);
+            if (modifier != null && modifier != node) {
+                String fromModifier = readPrefixFormatFromNode(modifier);
+                if (fromModifier != null && !fromModifier.isBlank()) {
+                    return fromModifier;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private String readStringPath(Object target, String path) {
+        if (target == null || path == null || path.isBlank()) {
+            return null;
+        }
+        if (target instanceof ConfigurationSection section) {
+            return section.getString(path);
+        }
+        try {
+            Object value = target.getClass().getMethod("getString", String.class).invoke(target, path);
+            if (value != null) {
+                return String.valueOf(value);
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            Object value = target.getClass().getMethod("get", String.class).invoke(target, path);
+            if (value instanceof String string) {
+                return string;
+            }
+        } catch (Throwable ignored) {
+        }
+        String[] parts = path.split("\\.");
+        if (parts.length == 2) {
+            Object child = null;
+            if (target instanceof ConfigurationSection section) {
+                child = section.getConfigurationSection(parts[0]);
+            } else {
+                try {
+                    child = target.getClass().getMethod("get", String.class).invoke(target, parts[0]);
+                } catch (Throwable ignored) {
+                }
+                if (child == null) {
+                    try {
+                        child = target.getClass().getMethod("getConfigurationSection", String.class).invoke(target, parts[0]);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            if (child != null) {
+                return readStringPath(child, parts[1]);
+            }
+        }
+        return null;
+    }
+
+    private boolean getBoolean(String path, boolean def) {
+        if (modifierConfig != null && modifierConfig.contains(path)) {
+            return modifierConfig.getBoolean(path, def);
+        }
+        return plugin.getConfig().getBoolean(path, def);
+    }
+
+    private String getString(String path, String def) {
+        if (modifierConfig != null && modifierConfig.contains(path)) {
+            return modifierConfig.getString(path, def);
+        }
+        return plugin.getConfig().getString(path, def);
+    }
+
+    private int getInt(String path, int def) {
+        if (modifierConfig != null && modifierConfig.contains(path)) {
+            return modifierConfig.getInt(path, def);
+        }
+        return plugin.getConfig().getInt(path, def);
+    }
+
+    private double getDouble(String path, double def) {
+        if (modifierConfig != null && modifierConfig.contains(path)) {
+            return modifierConfig.getDouble(path, def);
+        }
+        return plugin.getConfig().getDouble(path, def);
+    }
+
+    private boolean isNumber(String path) {
+        if (modifierConfig != null && modifierConfig.contains(path)) {
+            return modifierConfig.isDouble(path) || modifierConfig.isInt(path);
+        }
+        return plugin.getConfig().isDouble(path) || plugin.getConfig().isInt(path);
+    }
+
+    private List<String> getStringList(String path) {
+        if (modifierConfig != null && modifierConfig.contains(path)) {
+            return modifierConfig.getStringList(path);
+        }
+        return plugin.getConfig().getStringList(path);
     }
 
     private Object getMmoItemsPlugin() throws ReflectiveOperationException {

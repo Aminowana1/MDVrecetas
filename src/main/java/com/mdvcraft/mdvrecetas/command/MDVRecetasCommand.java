@@ -67,6 +67,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
         message(sender, "messages.reload-start");
         try {
             plugin.reloadConfig();
+            plugin.getForjadorModifierService().reload();
             int count = plugin.getRecipeManager().reloadRecipes();
             String msg = plugin.getConfig().getString("messages.reload-done", "&aRecetas recargadas: %count%")
                     .replace("%count%", String.valueOf(count));

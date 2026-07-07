@@ -1,30 +1,15 @@
-# MDVRecetas 0.6.0
+# MDVRecetas 0.6.2
 
 Motor de recetas custom para MDVCRAFT.
 
-## Nuevo en 0.6.0
+## Nuevo en 0.6.2
 
-- Firma de crafteo con varias líneas en `config.yml`.
-- Línea vacía superior para separar la firma del lore original.
-- Modificadores por nivel de Forjador.
-- Opción nueva en el editor: `Modificadores`.
-- Las recetas con modificadores se guardan con:
-
-```yaml
-forjador:
-  modifiers: true
-```
-
-- Los modificadores se eligen según el nivel de Forjador usando `forjador-modifiers.chances`.
-- Los modificadores se clasifican en:
-  - `bad`
-  - `normal`
-  - `good`
-  - `very-good`
-  - `blocked`
-- `reliquia` y `simbionte` quedan bloqueados por defecto mediante `blocked-contains`.
-- El item se muestra normal en la receta y el modificador se aplica al tomar/craftear el resultado.
-- El resultado base de MMOItems se intenta construir sin tirar modifiers internos aleatorios de MMOItems.
+- Hotfix visual de modificadores: si el modifier tiene prefix, MDVRecetas lo añade al nombre del item crafteado.
+  - Ejemplo: `&8Oxidado` + `&aCoraza de Soldado` → `&8Oxidado &aCoraza de Soldado`.
+- La tabla de modificadores por Forjador ahora vive en `plugins/MDVRecetas/modifiers.yml`.
+- `config.yml` queda más limpio.
+- Compatibilidad con config vieja: si una ruta no existe en `modifiers.yml`, MDVRecetas intenta leerla desde `config.yml`.
+- Se añadió `prefix-overrides` en `modifiers.yml` como respaldo si el prefix no se puede leer automáticamente desde MMOItems.
 
 ## Firma
 
@@ -38,11 +23,17 @@ signature:
 
 ## Modificadores por Forjador
 
+Ahora se configuran en:
+
+```text
+plugins/MDVRecetas/modifiers.yml
+```
+
+Ejemplo:
+
 ```yaml
 forjador-modifiers:
   enabled: true
-  level:
-    placeholder: '%mmocore_profession_level_forjador%'
 
   chances:
     level-1:
@@ -55,9 +46,37 @@ forjador-modifiers:
       normal: 45
       good: 35
       very-good: 15
+
+  qualities:
+    bad:
+      - t1_tanque_oxidado
+    normal:
+      - t1_normal
+    good:
+      - t1_tanque_pulido
+    very-good:
+      - t1_tanque_reforzado
+    blocked:
+      - reliquia
+      - simbionte
 ```
 
-MDVRecetas mira los modificadores que acepta el template de MMOItems y solo elige entre los IDs que estén clasificados en `qualities`.
+Si un prefix no sale automáticamente, puedes forzarlo así:
+
+```yaml
+forjador-modifiers:
+  prefix-overrides:
+    t1_tanque_oxidado: '&8Oxidado'
+```
+
+## Recetas con modifiers
+
+```yaml
+forjador:
+  exp: 2.0
+  signature: true
+  modifiers: true
+```
 
 ## Comandos
 
