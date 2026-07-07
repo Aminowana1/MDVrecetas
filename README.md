@@ -1,4 +1,4 @@
-# MDVRecetas 0.3.0
+# MDVRecetas 0.3.1
 
 Motor de recetas custom para MDVCRAFT + guía visual tipo Terraria.
 
@@ -26,6 +26,18 @@ Motor de recetas custom para MDVCRAFT + guía visual tipo Terraria.
 - Buscador por ingrediente tipo Terraria.
 - Ingredientes clickeables: si un ingrediente tiene receta visible, abre esa receta.
 - `hidden: true` / `hide: true` para recetas que se pueden craftear pero no se muestran en la guía.
+
+## Cambios 0.3.1
+
+- Eliminados los botones `Cerrar` de las GUIs; ahora solo queda `Volver`.
+- Botón `Volver` reforzado para usar la cabeza con textura custom de la config.
+- Menú de categoría sin cartel de información extra.
+- El título del menú de categoría ahora usa `Recetas %category%`.
+- Segunda fila de categorías movida un slot a la derecha.
+- La vista de receta ya no agrega lore extra a ingredientes ni resultado.
+- La XP, categoría, tipo y estación se muestran en el bloque de estación del centro.
+- La navegación del buscador recuerda correctamente de dónde venías al entrar a recetas de ingredientes.
+- Las recetas de horno/alto horno/ahumador fuerzan el resultado custom en `FurnaceSmeltEvent` para evitar que la cocción se reinicie sin producir item.
 
 ## Comandos
 

@@ -5,7 +5,9 @@ import com.mdvcraft.mdvrecetas.model.MdvRecipe;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class RecipeMenuHolder implements InventoryHolder {
@@ -34,6 +36,7 @@ public final class RecipeMenuHolder implements InventoryHolder {
     private int parentPage;
     private final Map<Integer, MdvRecipe> recipeSlots = new HashMap<>();
     private final Map<Integer, ItemSpec> ingredientSlots = new HashMap<>();
+    private List<RecipeBackState> recipeBackStack = new ArrayList<>();
 
     public RecipeMenuHolder(Screen screen, String category, int page, MdvRecipe recipe, BackTarget backTarget) {
         this.screen = screen;
@@ -116,11 +119,22 @@ public final class RecipeMenuHolder implements InventoryHolder {
         return ingredientSlots;
     }
 
+    public List<RecipeBackState> getRecipeBackStack() {
+        return recipeBackStack;
+    }
+
+    public void setRecipeBackStack(List<RecipeBackState> recipeBackStack) {
+        this.recipeBackStack = recipeBackStack == null ? new ArrayList<>() : new ArrayList<>(recipeBackStack);
+    }
+
     public void clearRecipeSlots() {
         recipeSlots.clear();
     }
 
     public void clearIngredientSlots() {
         ingredientSlots.clear();
+    }
+
+    public record RecipeBackState(MdvRecipe recipe, String category, int page, BackTarget backTarget) {
     }
 }

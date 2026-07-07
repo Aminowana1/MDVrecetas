@@ -14,6 +14,7 @@ import org.bukkit.event.inventory.FurnaceExtractEvent;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.inventory.ItemStack;
 
 public final class CookingXpListener implements Listener {
     private final MDVRecetasPlugin plugin;
@@ -28,10 +29,15 @@ public final class CookingXpListener implements Listener {
         this.lastRecipeKey = new NamespacedKey(plugin, "pending_forjador_recipe");
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onFurnaceSmelt(FurnaceSmeltEvent event) {
-        plugin.getRecipeManager().findCookingRecipe(event.getBlock(), event.getSource(), event.getResult()).ifPresent(recipe -> {
-            double xp = recipe.getForjador().getExp() * Math.max(1, event.getResult().getAmount());
+        plugin.getRecipeManager().findCookingRecipe(event.getBlock(), event.getSource()).ifPresent(recipe -> {
+            ItemStack result = plugin.getItemResolver().buildItem(recipe.getResult());
+            if (result == null || result.getType().isAir()) {
+                return;
+            }
+            event.setResult(result.clone());
+            double xp = recipe.getForjador().getExp() * Math.max(1, result.getAmount());
             if (xp <= 0) {
                 return;
             }

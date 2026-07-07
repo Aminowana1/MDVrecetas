@@ -162,7 +162,7 @@ public final class MdvRecipeManager {
         return itemResolver.matches(itemStack, recipe.getCookingIngredient());
     }
 
-    public Optional<MdvRecipe> findCookingRecipe(Block block, ItemStack source, ItemStack result) {
+    public Optional<MdvRecipe> findCookingRecipe(Block block, ItemStack source) {
         StationType station = stationFromBlock(block == null ? null : block.getType());
         if (station == null) {
             return Optional.empty();
@@ -171,17 +171,26 @@ public final class MdvRecipeManager {
             if (recipe.getType() != RecipeType.COOKING || recipe.getStation() != station) {
                 continue;
             }
-            if (!itemResolver.matches(source, recipe.getCookingIngredient())) {
-                continue;
-            }
-            ItemStack recipeResult = itemResolver.buildItem(recipe.getResult());
-            if (recipeResult == null) {
-                continue;
-            }
-            recipeResult.setAmount(result == null ? 1 : result.getAmount());
-            if (result != null && result.isSimilar(recipeResult)) {
+            if (itemResolver.matches(source, recipe.getCookingIngredient())) {
                 return Optional.of(recipe);
             }
+        }
+        return Optional.empty();
+    }
+
+    public Optional<MdvRecipe> findCookingRecipe(Block block, ItemStack source, ItemStack result) {
+        Optional<MdvRecipe> match = findCookingRecipe(block, source);
+        if (match.isEmpty()) {
+            return Optional.empty();
+        }
+        MdvRecipe recipe = match.get();
+        ItemStack recipeResult = itemResolver.buildItem(recipe.getResult());
+        if (recipeResult == null) {
+            return Optional.empty();
+        }
+        recipeResult.setAmount(result == null ? 1 : result.getAmount());
+        if (result != null && result.isSimilar(recipeResult)) {
+            return Optional.of(recipe);
         }
         return Optional.empty();
     }
