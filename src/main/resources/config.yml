@@ -1,6 +1,6 @@
 # ==========================================================
-# MDVRecetas 0.1.0
-# Motor inicial de recetas custom para MDVCRAFT.
+# MDVRecetas 0.2.0
+# Motor de recetas custom + visualizador tipo Terraria.
 # ==========================================================
 
 settings:
@@ -11,10 +11,82 @@ forjador:
   enabled: true
   profession-id: forjador
   notify-xp: true
+  # Opciones: HOLOGRAM, CHAT, BOTH, NONE
+  notify-mode: HOLOGRAM
   # Comando ejecutado desde consola.
   # MMOCore: /mmocore admin exp give <player> <profession/main> <value> <split>
   command: 'mmocore admin exp give %player% %profession% %xp% false'
   message: '&8[&6Forjador&8] &7Has ganado &e%xp% XP &7por fabricar &f%recipe%&7.'
+  hologram:
+    enabled: true
+    text: '&e+%xp%EXP!'
+    y-offset: 1.35
+    duration-ticks: 35
+    view-range: 24.0
+
+gui:
+  title: '&8&lGuía de Recetas'
+  recipe-title: '&8&lVista de Receta'
+
+  # Slots donde aparecen los resultados/lista de recetas.
+  recipe-list-slots: [18,19,20,21,22,23,24,25,26,30,31,32,33,34,35,39,40,41,42,43,44]
+
+  search:
+    center-slot: 37
+    border-slots: [27,28,29,36,38,45,46,47]
+
+  buttons:
+    previous-slot: 48
+    info-slot: 49
+    next-slot: 50
+    back-slot: 49
+    close-slot: 53
+
+  categories:
+    ARMAS_CUERPO_A_CUERPO:
+      name: '&cArmas cuerpo a cuerpo'
+      icon: IRON_SWORD
+      slot: 0
+    ARMAS_A_DISTANCIA:
+      name: '&aArmas a distancia'
+      icon: BOW
+      slot: 1
+    ARMAS_MAGICAS:
+      name: '&9Armas mágicas'
+      icon: BLAZE_ROD
+      slot: 2
+    SOPORTE_MAGICO:
+      name: '&dSoporte mágico'
+      icon: ENCHANTED_BOOK
+      slot: 3
+    ARMADURAS:
+      name: '&6Armaduras'
+      icon: IRON_CHESTPLATE
+      slot: 4
+    HERRAMIENTAS:
+      name: '&7Herramientas'
+      icon: IRON_PICKAXE
+      slot: 5
+    AGRICULTURA:
+      name: '&aAgricultura'
+      icon: WHEAT
+      slot: 6
+    CONSUMIBLES:
+      name: '&eConsumibles'
+      icon: HONEY_BOTTLE
+      slot: 7
+    MATERIALES:
+      name: '&fMateriales'
+      icon: IRON_INGOT
+      slot: 8
+    REPARACIONES:
+      name: '&bReparaciones'
+      icon: ANVIL
+      slot: 9
+    UTILITARIOS:
+      name: '&5Utilitarios'
+      icon: COMPASS
+      slot: 17
 
 messages:
   prefix: '&8[&6MDVRecetas&8] &r'

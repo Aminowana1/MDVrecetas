@@ -59,6 +59,54 @@ public final class MdvRecipeManager {
         return Collections.unmodifiableCollection(recipesByKey.values());
     }
 
+
+    public List<MdvRecipe> getByCategory(String category) {
+        if (category == null || category.isBlank()) {
+            return new ArrayList<>(recipesByKey.values());
+        }
+        String normalized = category.toUpperCase(Locale.ROOT);
+        List<MdvRecipe> result = new ArrayList<>();
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (normalized.equalsIgnoreCase(recipe.getCategory())) {
+                result.add(recipe);
+            }
+        }
+        return result;
+    }
+
+    public List<MdvRecipe> findRecipesUsing(ItemStack itemStack) {
+        if (itemStack == null || itemStack.getType().isAir()) {
+            return List.of();
+        }
+        List<MdvRecipe> result = new ArrayList<>();
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (usesIngredient(recipe, itemStack)) {
+                result.add(recipe);
+            }
+        }
+        return result;
+    }
+
+    private boolean usesIngredient(MdvRecipe recipe, ItemStack itemStack) {
+        if (recipe.getType() == RecipeType.SHAPED) {
+            for (ItemSpec spec : recipe.getShapedIngredients().values()) {
+                if (itemResolver.matches(itemStack, spec)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (recipe.getType() == RecipeType.SHAPELESS) {
+            for (ItemSpec spec : recipe.getShapelessIngredients().values()) {
+                if (itemResolver.matches(itemStack, spec)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return itemResolver.matches(itemStack, recipe.getCookingIngredient());
+    }
+
     public Optional<MdvRecipe> findCookingRecipe(Block block, ItemStack source, ItemStack result) {
         StationType station = stationFromBlock(block == null ? null : block.getType());
         if (station == null) {

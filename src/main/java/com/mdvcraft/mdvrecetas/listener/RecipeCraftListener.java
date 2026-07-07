@@ -1,9 +1,9 @@
 package com.mdvcraft.mdvrecetas.listener;
 
 import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
-import com.mdvcraft.mdvrecetas.model.MdvRecipe;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
 import org.bukkit.Keyed;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -36,7 +36,11 @@ public final class RecipeCraftListener implements Listener {
         plugin.getRecipeManager().getByKey(keyed.getKey()).ifPresent(mdvRecipe -> {
             int crafts = estimateCrafts(event);
             double xp = mdvRecipe.getForjador().getExp() * Math.max(1, crafts);
-            xpService.award(player, xp, mdvRecipe.getId());
+            Location visualLocation = event.getInventory().getLocation();
+            if (visualLocation == null) {
+                visualLocation = player.getLocation();
+            }
+            xpService.award(player, visualLocation, xp, mdvRecipe.getId());
         });
     }
 

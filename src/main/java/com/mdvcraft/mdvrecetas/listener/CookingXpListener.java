@@ -56,7 +56,7 @@ public final class CookingXpListener implements Listener {
         container.remove(pendingXpKey);
         container.remove(lastRecipeKey);
         tileState.update(true, false);
-        xpService.award(player, pending, recipeId == null ? "cooking" : recipeId);
+        xpService.award(player, block.getLocation(), pending, recipeId == null ? "cooking" : recipeId);
     }
 
     private void addPendingXp(Block block, MdvRecipe recipe, double xp) {

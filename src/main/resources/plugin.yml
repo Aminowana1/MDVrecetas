@@ -1,5 +1,5 @@
 name: MDVRecetas
-version: 0.1.0
+version: 0.2.0
 main: com.mdvcraft.mdvrecetas.MDVRecetasPlugin
 api-version: '1.21'
 author: MDVCRAFT
@@ -12,12 +12,12 @@ softdepend:
 commands:
   mdvrecetas:
     description: Comando principal de MDVRecetas.
-    usage: /mdvrecetas <reload|debugitem|serializehand>
+    usage: /mdvrecetas [reload|debugitem|serializehand]
     aliases: [recetas, mdvrecipes]
 permissions:
   mdvrecetas.admin:
     description: Permite administrar MDVRecetas.
     default: op
   mdvrecetas.use:
-    description: Permite usar funciones de jugador de MDVRecetas.
+    description: Permite abrir la guía de recetas.
     default: true
