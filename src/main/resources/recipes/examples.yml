@@ -1,0 +1,118 @@
+# ==========================================================
+# Ejemplos MDVRecetas 0.1.0
+# Puedes copiar estos bloques y cambiar enabled: true.
+# ==========================================================
+recipes:
+  manzana_dorada_menor:
+    enabled: false
+    station: CRAFTING_TABLE
+    category: CONSUMIBLES
+    type: SHAPED
+
+    replace-vanilla:
+      enabled: true
+      vanilla-key: minecraft:golden_apple
+
+    shape:
+      - "GGG"
+      - "GAG"
+      - "GGG"
+
+    ingredients:
+      G:
+        kind: VANILLA
+        material: GOLD_INGOT
+      A:
+        kind: VANILLA
+        material: APPLE
+
+    result:
+      kind: MMOITEMS
+      type: CONSUMABLE
+      id: MANZANA_DORADA_MENOR
+      amount: 1
+
+    forjador:
+      exp: 0.8
+
+  espada_hierro_orco:
+    enabled: false
+    station: CRAFTING_TABLE
+    category: ARMAS_CUERPO_A_CUERPO
+    type: SHAPED
+
+    shape:
+      - " C "
+      - " I "
+      - " P "
+
+    ingredients:
+      C:
+        kind: MMOITEMS
+        type: MATERIAL
+        id: COLMILLO_ORCO
+      I:
+        kind: MMOITEMS
+        type: MATERIAL
+        id: HIERRO_ORCO
+      P:
+        kind: VANILLA
+        material: STICK
+
+    result:
+      kind: MMOITEMS
+      type: SWORD
+      id: ESPADA_HIERRO_ORCO
+      amount: 1
+
+    forjador:
+      exp: 2.0
+
+  nucleo_gelido_pulido:
+    enabled: false
+    station: CRAFTING_TABLE
+    category: MATERIALES
+    type: SHAPELESS
+
+    ingredients:
+      nucleo:
+        kind: MMOITEMS
+        type: MATERIAL
+        id: NUCLEO_GELIDO
+      cristal:
+        kind: VANILLA
+        material: AMETHYST_SHARD
+        amount: 2
+
+    result:
+      kind: MMOITEMS
+      type: MATERIAL
+      id: NUCLEO_GELIDO_PULIDO
+      amount: 1
+
+    forjador:
+      exp: 0.8
+
+  hierro_orco_refinado:
+    enabled: false
+    station: FURNACE
+    category: MATERIALES
+    type: COOKING
+
+    ingredient:
+      kind: MMOITEMS
+      type: MATERIAL
+      id: HIERRO_ORCO_BRUTO
+
+    result:
+      kind: MMOITEMS
+      type: MATERIAL
+      id: HIERRO_ORCO
+      amount: 1
+
+    cooking:
+      time: 200
+      vanilla-exp: 0.2
+
+    forjador:
+      exp: 0.5

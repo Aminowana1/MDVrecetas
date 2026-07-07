@@ -1,0 +1,28 @@
+# ==========================================================
+# MDVRecetas 0.1.0
+# Motor inicial de recetas custom para MDVCRAFT.
+# ==========================================================
+
+settings:
+  debug: false
+  recipe-folder: recipes
+
+forjador:
+  enabled: true
+  profession-id: forjador
+  notify-xp: true
+  # Comando ejecutado desde consola.
+  # MMOCore: /mmocore admin exp give <player> <profession/main> <value> <split>
+  command: 'mmocore admin exp give %player% %profession% %xp% false'
+  message: '&8[&6Forjador&8] &7Has ganado &e%xp% XP &7por fabricar &f%recipe%&7.'
+
+messages:
+  prefix: '&8[&6MDVRecetas&8] &r'
+  no-permission: '&cNo tienes permiso.'
+  reload-start: '&7Recargando recetas...'
+  reload-done: '&aRecetas recargadas. &7Registradas: &e%count%&7.'
+  reload-fail: '&cNo se pudieron recargar las recetas. Revisa la consola.'
+  player-only: '&cEste comando solo puede usarlo un jugador.'
+  no-item-in-hand: '&cDebes sostener un item en la mano principal.'
+  debug-header: '&6Item en mano:'
+  serialize-saved: '&aItem guardado en &e%file%&a.'

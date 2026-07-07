@@ -1,0 +1,23 @@
+name: MDVRecetas
+version: 0.1.0
+main: com.mdvcraft.mdvrecetas.MDVRecetasPlugin
+api-version: '1.21'
+author: MDVCRAFT
+website: https://mdvcraft.xyz
+depend:
+  - MMOItems
+  - MMOCore
+softdepend:
+  - MDVSocial
+commands:
+  mdvrecetas:
+    description: Comando principal de MDVRecetas.
+    usage: /mdvrecetas <reload|debugitem|serializehand>
+    aliases: [recetas, mdvrecipes]
+permissions:
+  mdvrecetas.admin:
+    description: Permite administrar MDVRecetas.
+    default: op
+  mdvrecetas.use:
+    description: Permite usar funciones de jugador de MDVRecetas.
+    default: true
