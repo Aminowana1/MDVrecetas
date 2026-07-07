@@ -1,34 +1,46 @@
-# MDVRecetas 0.4.1
+# MDVRecetas 0.5.0
 
-Motor de recetas custom para MDVCRAFT con guía visual tipo Terraria, buscador por ingrediente, hornos custom y editor in-game.
+Motor de recetas custom para MDVCRAFT.
 
-## Nuevo en 0.4.1
+## Nuevo en 0.5.0
 
-- `/mdvrecetas admin`: catálogo admin de recetas.
-- El catálogo admin muestra recetas visibles y ocultas en sus categorías.
-- Click izquierdo sobre una receta admin: abre el visualizador normal.
-- Click derecho sobre una receta admin: abre el editor para modificar esa receta.
-- El editor puede guardar cambios sobre una receta existente.
-- Botón gris en edición: resetea la receta al estado original.
-- Botón rojo en edición: elimina la receta del YAML.
-- Opciones nuevas del editor:
-  - Asignar ID manual por chat.
-  - Reemplazar receta vanilla.
-  - Asignar key vanilla por chat, por ejemplo `minecraft:golden_apple`.
-- Si no asignas ID manual, el editor genera una ID automática como antes.
-- No permite guardar una ID duplicada.
+- Firma de crafteo opcional por receta.
+- Lore configurable: `&l&aForjado por: &e%player%`.
+- Datos internos guardados en PersistentDataContainer:
+  - UUID del creador.
+  - Nombre del creador.
+  - ID de receta usada.
+- Nueva opción en el editor para activar/desactivar firma.
+- Por defecto todas las recetas quedan sin firma.
 
-## Comandos
+## YAML
 
-- `/mdvrecetas` abre la guía de recetas.
-- `/mdvrecetas admin` abre el catálogo admin.
-- `/mdvrecetas editor` abre el editor para crear una receta nueva.
-- `/mdvrecetas reload` recarga recetas.
-- `/mdvrecetas debugitem` muestra información del item en mano.
-- `/mdvrecetas serializehand <id>` serializa el item en mano como ITEMSTACK.
+```yaml
+forjador:
+  exp: 2.0
+  signature: true
+  modifiers: false
+```
+
+## Editor
+
+Usa:
+
+```text
+/mdvrecetas editor
+```
+
+En Opciones de receta puedes activar **Firma de crafteo**.
+
+## Config
+
+```yaml
+signature:
+  enabled: true
+  lore-line: '&l&aForjado por: &e%player%'
+```
 
 ## Notas
 
-El editor guarda recetas en `plugins/MDVRecetas/recipes/editor.yml`.
-
-Al editar una receta existente, MDVRecetas elimina la definición vieja de los YAML y guarda la nueva versión en `editor.yml`. Esto evita duplicados de ID.
+La firma solo se aplica al resultado final de recetas donde `forjador.signature` esté en `true`.
+No se añade fecha visible por ahora.

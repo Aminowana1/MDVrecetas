@@ -3,6 +3,7 @@ package com.mdvcraft.mdvrecetas.listener;
 import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
 import com.mdvcraft.mdvrecetas.model.MdvRecipe;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
+import com.mdvcraft.mdvrecetas.service.RecipeSignatureService;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -17,6 +18,8 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.FurnaceExtractEvent;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.event.inventory.FurnaceStartSmeltEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.HashMap;
@@ -28,6 +31,7 @@ import java.util.Iterator;
 public final class CookingXpListener implements Listener {
     private final MDVRecetasPlugin plugin;
     private final ForjadorXpService xpService;
+    private final RecipeSignatureService signatureService;
 
     /**
      * Receta custom detectada cuando el horno empieza a cocinar.
@@ -49,9 +53,10 @@ public final class CookingXpListener implements Listener {
      */
     private final Map<String, PendingCookingXp> pendingXp = new HashMap<>();
 
-    public CookingXpListener(MDVRecetasPlugin plugin, ForjadorXpService xpService) {
+    public CookingXpListener(MDVRecetasPlugin plugin, ForjadorXpService xpService, RecipeSignatureService signatureService) {
         this.plugin = plugin;
         this.xpService = xpService;
+        this.signatureService = signatureService;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -116,9 +121,44 @@ public final class CookingXpListener implements Listener {
         event.setResult(result.clone());
 
         double xp = recipe.getForjador().getExp() * Math.max(1, result.getAmount());
-        if (xp > 0) {
-            addPendingXp(blockKey, recipe, xp);
+        addPendingXp(blockKey, recipe, xp);
+    }
+
+
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFurnaceResultClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
         }
+        if (event.getRawSlot() != 2) {
+            return;
+        }
+
+        Inventory top = event.getView().getTopInventory();
+        if (!(top.getHolder() instanceof Furnace furnace)) {
+            return;
+        }
+
+        String blockKey = blockKey(furnace.getBlock());
+        PendingCookingXp pending = pendingXp.get(blockKey);
+        if (pending == null) {
+            return;
+        }
+
+        MdvRecipe recipe = plugin.getRecipeManager().getByKey(pending.recipeKey()).orElse(null);
+        if (recipe == null || recipe.getForjador() == null || !recipe.getForjador().isSignature()) {
+            return;
+        }
+
+        ItemStack result = top.getItem(2);
+        if (result == null || result.getType().isAir()) {
+            return;
+        }
+
+        ItemStack signed = signatureService.applySignature(result, player, recipe.getId());
+        top.setItem(2, signed);
+        event.setCurrentItem(signed.clone());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -180,10 +220,10 @@ public final class CookingXpListener implements Listener {
     private void addPendingXp(String blockKey, MdvRecipe recipe, double xp) {
         PendingCookingXp current = pendingXp.get(blockKey);
         if (current == null) {
-            pendingXp.put(blockKey, new PendingCookingXp(xp, recipe.getId()));
+            pendingXp.put(blockKey, new PendingCookingXp(xp, recipe.getId(), recipe.getKey()));
             return;
         }
-        pendingXp.put(blockKey, new PendingCookingXp(current.xp() + xp, recipe.getId()));
+        pendingXp.put(blockKey, new PendingCookingXp(current.xp() + xp, recipe.getId(), recipe.getKey()));
     }
 
     private String blockKey(Block block) {
@@ -195,6 +235,6 @@ public final class CookingXpListener implements Listener {
         return worldId + ":" + location.getBlockX() + ":" + location.getBlockY() + ":" + location.getBlockZ();
     }
 
-    private record PendingCookingXp(double xp, String recipeId) {
+    private record PendingCookingXp(double xp, String recipeId, NamespacedKey recipeKey) {
     }
 }

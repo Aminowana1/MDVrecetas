@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVRecetas 0.4.1
+# MDVRecetas 0.5.0
 # Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
@@ -23,6 +23,10 @@ forjador:
     y-offset: 1.35
     duration-ticks: 35
     view-range: 24.0
+
+signature:
+  enabled: true
+  lore-line: '&l&aForjado por: &e%player%'
 
 gui:
   main-back-command: 'mdvsocial'

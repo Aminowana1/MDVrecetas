@@ -16,6 +16,7 @@ public final class EditorSession {
     private int cookingTime = 200;
     private float vanillaExp = 0.0F;
     private double forjadorExp = 0.0D;
+    private boolean signature = false;
     private String customRecipeId;
     private String editingRecipeId;
     private MdvRecipe originalRecipe;
@@ -80,6 +81,14 @@ public final class EditorSession {
 
     public void setForjadorExp(double forjadorExp) {
         this.forjadorExp = Math.max(0.0D, forjadorExp);
+    }
+
+    public boolean isSignature() {
+        return signature;
+    }
+
+    public void setSignature(boolean signature) {
+        this.signature = signature;
     }
 
     public String getCustomRecipeId() {
@@ -147,6 +156,7 @@ public final class EditorSession {
         this.cookingTime = 200;
         this.vanillaExp = 0.0F;
         this.forjadorExp = 0.0D;
+        this.signature = false;
         this.replaceVanilla = false;
         this.vanillaKey = "";
         this.customRecipeId = null;
