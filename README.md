@@ -1,8 +1,8 @@
-# MDVRecetas 0.6.2
+# MDVRecetas 0.6.3
 
 Motor de recetas custom para MDVCRAFT.
 
-## Nuevo en 0.6.2
+## Nuevo en 0.6.3
 
 - Hotfix visual de modificadores: si el modifier tiene prefix, MDVRecetas lo añade al nombre del item crafteado.
   - Ejemplo: `&8Oxidado` + `&aCoraza de Soldado` → `&8Oxidado &aCoraza de Soldado`.
@@ -86,3 +86,47 @@ forjador:
 - `/mdvrecetas reload`
 - `/mdvrecetas debugitem`
 - `/mdvrecetas serializehand <id>`
+
+
+## MDVRecetas 0.6.3
+
+Hotfix y placeholders:
+
+- Corrige shift-click/click derecho en recetas con firma o modificadores.
+  - Ahora MDVRecetas procesa cada item creado por separado.
+  - Cada item recibe su propia firma y su propio roll de modificador.
+- Añade placeholders de PlaceholderAPI para mostrar probabilidades actuales de Forjador.
+
+Placeholders recomendados para la UI de MMOCore:
+
+```yaml
+- '&8Calidad de forja actual:'
+- '&7Dañado: &c%mdvrecetas_forjador_chance_danado%% &8| &7Estable: &e%mdvrecetas_forjador_chance_estable%%'
+- '&7Refinado: &a%mdvrecetas_forjador_chance_refinado%% &8| &7Magistral: &2%mdvrecetas_forjador_chance_magistral%%'
+```
+
+Placeholders disponibles:
+
+```text
+%mdvrecetas_forjador_nivel%
+%mdvrecetas_forjador_chance_danado%
+%mdvrecetas_forjador_chance_estable%
+%mdvrecetas_forjador_chance_refinado%
+%mdvrecetas_forjador_chance_magistral%
+%mdvrecetas_forjador_chance_bad%
+%mdvrecetas_forjador_chance_normal%
+%mdvrecetas_forjador_chance_good%
+%mdvrecetas_forjador_chance_very_good%
+%mdvrecetas_forjador_probabilidades_1%
+%mdvrecetas_forjador_probabilidades_2%
+%mdvrecetas_forjador_probabilidades%
+```
+
+Nombres roleros usados:
+
+```text
+Dañado = bad
+Estable = normal
+Refinado = good
+Magistral = very-good
+```

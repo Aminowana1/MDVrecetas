@@ -58,6 +58,27 @@ public final class ForjadorModifierService {
         this.modifierConfig = YamlConfiguration.loadConfiguration(file);
     }
 
+    public int getForjadorLevel(Player player) {
+        return readForjadorLevel(player);
+    }
+
+    public double getCurrentChance(Player player, String qualityKey) {
+        ModifierQuality quality = ModifierQuality.fromConfig(qualityKey);
+        if (!quality.isRollable()) {
+            return 0.0D;
+        }
+        return currentChancesForLevel(readForjadorLevel(player)).getOrDefault(quality, 0.0D);
+    }
+
+    public String formatCurrentChance(Player player, String qualityKey) {
+        double value = getCurrentChance(player, qualityKey);
+        if (Math.abs(value - Math.rint(value)) < 0.0001D) {
+            return String.valueOf((int) Math.rint(value));
+        }
+        return String.format(Locale.US, "%.1f", value);
+    }
+
+
     public ItemStack applyModifierIfNeeded(ItemStack original, Player player, MdvRecipe recipe) {
         if (original == null || original.getType().isAir() || player == null || recipe == null || recipe.getForjador() == null) {
             return original;
@@ -267,20 +288,26 @@ public final class ForjadorModifierService {
         return candidates.get(candidates.size() - 1);
     }
 
-    private ModifierQuality rollQuality(int level) {
+    private Map<ModifierQuality, Double> currentChancesForLevel(int level) {
         int min = getInt("forjador-modifiers.level.min", 1);
         int max = getInt("forjador-modifiers.level.max", 50);
         double t = max <= min ? 1.0D : (Math.max(min, Math.min(max, level)) - min) / (double) (max - min);
 
         Map<ModifierQuality, Double> low = readChancePoint("forjador-modifiers.chances.level-1");
         Map<ModifierQuality, Double> high = readChancePoint("forjador-modifiers.chances.level-50");
-        double total = 0.0D;
         Map<ModifierQuality, Double> interpolated = new EnumMap<>(ModifierQuality.class);
         for (ModifierQuality quality : ModifierQuality.rollableValues()) {
             double value = low.getOrDefault(quality, 0.0D) + (high.getOrDefault(quality, 0.0D) - low.getOrDefault(quality, 0.0D)) * t;
-            value = Math.max(0.0D, value);
-            interpolated.put(quality, value);
-            total += value;
+            interpolated.put(quality, Math.max(0.0D, value));
+        }
+        return interpolated;
+    }
+
+    private ModifierQuality rollQuality(int level) {
+        Map<ModifierQuality, Double> interpolated = currentChancesForLevel(level);
+        double total = 0.0D;
+        for (ModifierQuality quality : ModifierQuality.rollableValues()) {
+            total += Math.max(0.0D, interpolated.getOrDefault(quality, 0.0D));
         }
         if (total <= 0.0D) {
             return ModifierQuality.NORMAL;

@@ -31,6 +31,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
     private RecipeGuiManager recipeGuiManager;
     private EditorGuiManager editorGuiManager;
     private MDVSocialHook mdvSocialHook;
+    private com.mdvcraft.mdvrecetas.placeholder.MDVRecetasPlaceholderExpansion placeholderExpansion;
 
     @Override
     public void onEnable() {
@@ -50,12 +51,14 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.2 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.3 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(recipeGuiManager, this);
         getServer().getPluginManager().registerEvents(editorGuiManager, this);
+
+        registerPlaceholdersIfAvailable();
 
         MDVRecetasCommand commandExecutor = new MDVRecetasCommand(this);
         PluginCommand command = getCommand("mdvrecetas");
@@ -73,8 +76,28 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         if (editorGuiManager != null) {
             editorGuiManager.closeAllAndReturnEditorItems();
         }
+        if (placeholderExpansion != null) {
+            placeholderExpansion.unregister();
+            placeholderExpansion = null;
+        }
         if (recipeManager != null) {
             recipeManager.unregisterOwnRecipes();
+        }
+    }
+
+
+    private void registerPlaceholdersIfAvailable() {
+        if (!getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            return;
+        }
+        try {
+            this.placeholderExpansion = new com.mdvcraft.mdvrecetas.placeholder.MDVRecetasPlaceholderExpansion(this);
+            if (this.placeholderExpansion.register()) {
+                getLogger().info("PlaceholderAPI placeholders registered.");
+            }
+        } catch (Throwable throwable) {
+            getLogger().warning("Could not register PlaceholderAPI placeholders: " + throwable.getMessage());
+            this.placeholderExpansion = null;
         }
     }
 

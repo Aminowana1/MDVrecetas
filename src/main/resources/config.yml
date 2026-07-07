@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVRecetas 0.6.1
+# MDVRecetas 0.6.3
 # Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
@@ -36,7 +36,7 @@ signature:
 # ==========================================================
 # Modificadores por Forjador
 #
-# Desde MDVRecetas 0.6.1, la tabla de calidades, chances,
+# Desde MDVRecetas 0.6.3, la tabla de calidades, chances,
 # bloqueados y pesos vive en plugins/MDVRecetas/modifiers.yml
 # para que config.yml no quede gigante.
 # ==========================================================
