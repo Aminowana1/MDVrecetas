@@ -23,6 +23,11 @@ public final class MdvRecipe {
     private final ForjadorOptions forjador;
     private final boolean replaceVanilla;
     private final NamespacedKey vanillaKey;
+    private final int visualPage;
+    private final int visualSlot;
+    private final String visualGroup;
+    private final boolean visualPrimary;
+    private final int visualOrder;
 
     public MdvRecipe(
             String id,
@@ -40,7 +45,12 @@ public final class MdvRecipe {
             float cookingVanillaExp,
             ForjadorOptions forjador,
             boolean replaceVanilla,
-            NamespacedKey vanillaKey
+            NamespacedKey vanillaKey,
+            int visualPage,
+            int visualSlot,
+            String visualGroup,
+            boolean visualPrimary,
+            int visualOrder
     ) {
         this.id = id;
         this.key = key;
@@ -58,6 +68,11 @@ public final class MdvRecipe {
         this.forjador = forjador;
         this.replaceVanilla = replaceVanilla;
         this.vanillaKey = vanillaKey;
+        this.visualPage = visualPage;
+        this.visualSlot = visualSlot;
+        this.visualGroup = visualGroup == null ? "" : visualGroup.trim();
+        this.visualPrimary = visualPrimary;
+        this.visualOrder = visualOrder;
     }
 
     public String getId() {
@@ -122,5 +137,41 @@ public final class MdvRecipe {
 
     public NamespacedKey getVanillaKey() {
         return vanillaKey;
+    }
+
+    /**
+     * Pagina visual 1-based dentro del visualizador de categoria.
+     * -1 significa automatico.
+     */
+    public int getVisualPage() {
+        return visualPage;
+    }
+
+    /**
+     * Slot absoluto del inventario dentro del visualizador de categoria.
+     * -1 significa automatico.
+     */
+    public int getVisualSlot() {
+        return visualSlot;
+    }
+
+    public boolean hasVisualPosition() {
+        return visualPage > 0 && visualSlot >= 0;
+    }
+
+    public String getVisualGroup() {
+        return visualGroup;
+    }
+
+    public boolean hasVisualGroup() {
+        return visualGroup != null && !visualGroup.isBlank();
+    }
+
+    public boolean isVisualPrimary() {
+        return visualPrimary;
+    }
+
+    public int getVisualOrder() {
+        return visualOrder;
     }
 }

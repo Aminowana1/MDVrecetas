@@ -39,6 +39,8 @@ public final class RecipeParser {
             }
         }
 
+        VisualOptions visual = parseVisualOptions(section);
+
         List<String> shape = List.of();
         Map<Character, ItemSpec> shapedIngredients = Map.of();
         Map<String, ItemSpec> shapelessIngredients = Map.of();
@@ -74,8 +76,55 @@ public final class RecipeParser {
                 cookingVanillaExp,
                 forjador,
                 replaceVanilla,
-                vanillaKey
+                vanillaKey,
+                visual.page(),
+                visual.slot(),
+                visual.group(),
+                visual.primary(),
+                visual.order()
         );
+    }
+
+
+    private VisualOptions parseVisualOptions(ConfigurationSection section) {
+        int slot = firstInt(section, -1, "visual.slot", "display.slot", "viewer.slot", "category-view.slot");
+        int page = firstInt(section, slot >= 0 ? 1 : -1, "visual.page", "display.page", "viewer.page", "category-view.page");
+        if (slot < 0) {
+            page = -1;
+        } else if (page < 1) {
+            page = 1;
+        }
+        String group = firstString(section, "", "visual.group", "display.group", "viewer.group", "category-view.group", "linked-group", "recipe-group", "group");
+        boolean primary = firstBoolean(section, false, "visual.primary", "display.primary", "viewer.primary", "category-view.primary", "primary");
+        int order = firstInt(section, 0, "visual.order", "display.order", "viewer.order", "category-view.order", "order");
+        return new VisualOptions(page, slot, group == null ? "" : group.trim(), primary, order);
+    }
+
+    private int firstInt(ConfigurationSection section, int fallback, String... paths) {
+        for (String path : paths) {
+            if (section.contains(path)) {
+                return section.getInt(path, fallback);
+            }
+        }
+        return fallback;
+    }
+
+    private String firstString(ConfigurationSection section, String fallback, String... paths) {
+        for (String path : paths) {
+            if (section.contains(path)) {
+                return section.getString(path, fallback);
+            }
+        }
+        return fallback;
+    }
+
+    private boolean firstBoolean(ConfigurationSection section, boolean fallback, String... paths) {
+        for (String path : paths) {
+            if (section.contains(path)) {
+                return section.getBoolean(path, fallback);
+            }
+        }
+        return fallback;
     }
 
     private Map<Character, ItemSpec> parseShapedIngredients(ConfigurationSection section) {
@@ -128,6 +177,9 @@ public final class RecipeParser {
 
     private String sanitizeKey(String id) {
         return id.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_./-]", "_");
+    }
+
+    private record VisualOptions(int page, int slot, String group, boolean primary, int order) {
     }
 
     private <T extends Enum<T>> T enumValue(Class<T> enumClass, String raw, T fallback) {

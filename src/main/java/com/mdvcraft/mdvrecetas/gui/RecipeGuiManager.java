@@ -11,6 +11,7 @@ import com.mdvcraft.mdvrecetas.service.ItemResolver;
 import com.mdvcraft.mdvrecetas.util.ColorUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -27,6 +28,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.profile.PlayerProfile;
 import org.bukkit.profile.PlayerTextures;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.lang.reflect.Field;
 import java.net.URL;
@@ -55,6 +57,7 @@ public final class RecipeGuiManager implements Listener {
     private final MdvRecipeManager recipeManager;
     private final ItemResolver itemResolver;
     private final MDVSocialHook socialHook;
+    private final NamespacedKey guiItemKey;
 
     private final Map<UUID, SearchSession> searchSessions = new HashMap<>();
     private final Map<UUID, Integer> lastBottomClickSlot = new HashMap<>();
@@ -65,6 +68,10 @@ public final class RecipeGuiManager implements Listener {
         this.recipeManager = recipeManager;
         this.itemResolver = itemResolver;
         this.socialHook = socialHook;
+        this.guiItemKey = new NamespacedKey(plugin, "gui_item");
+
+        long linkedCycleTicks = Math.max(5L, plugin.getConfig().getLong("gui.recipe.linked-cycle-ticks", 30L));
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickLinkedRecipeViews, linkedCycleTicks, linkedCycleTicks);
     }
 
     public void openMain(Player player) {
@@ -175,6 +182,10 @@ public final class RecipeGuiManager implements Listener {
         int rawSlot = event.getRawSlot();
         boolean topClick = rawSlot >= 0 && rawSlot < event.getView().getTopInventory().getSize();
 
+        if (topClick) {
+            cleanupCursorIfGuiItem(player);
+        }
+
         if (!topClick) {
             if (event.isShiftClick()) {
                 event.setCancelled(true);
@@ -245,9 +256,11 @@ public final class RecipeGuiManager implements Listener {
             return;
         }
         if (internalTransitions.contains(player.getUniqueId())) {
+            Bukkit.getScheduler().runTask(plugin, () -> cleanupEscapedGuiItems(player));
             return;
         }
         returnSearchItem(player, holder.getInventory());
+        Bukkit.getScheduler().runTask(plugin, () -> cleanupEscapedGuiItems(player));
     }
 
     private void handleMainClick(Player player, RecipeMenuHolder holder, int slot) {
@@ -305,8 +318,8 @@ public final class RecipeGuiManager implements Listener {
             socialHook.play(player, "back");
             return;
         }
-        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory(), holder.isAdminMode());
-        int maxPage = maxPage(recipes.size(), categoryRecipeSlots().size());
+        CategoryLayout layout = layoutCategoryRecipes(currentCategoryDisplayRecipes(holder.getCategory(), holder.isAdminMode()), categoryRecipeSlots());
+        int maxPage = layout.maxPage();
         if (slot == categoryPreviousSlot() && maxPage > 0) {
             if (holder.getPage() > 0) {
                 holder.setPage(holder.getPage() - 1);
@@ -451,10 +464,13 @@ public final class RecipeGuiManager implements Listener {
         holder.clearIngredientSlots();
         fillAll(inventory, Material.BLACK_STAINED_GLASS_PANE, " ");
 
-        List<MdvRecipe> recipes = currentCategoryRecipes(holder.getCategory(), holder.isAdminMode());
-        drawRecipeResults(inventory, holder, recipes, categoryRecipeSlots());
+        CategoryLayout layout = layoutCategoryRecipes(currentCategoryDisplayRecipes(holder.getCategory(), holder.isAdminMode()), categoryRecipeSlots());
+        if (holder.getPage() > layout.maxPage()) {
+            holder.setPage(layout.maxPage());
+        }
+        drawRecipeResults(inventory, holder, layout.recipesForPage(holder.getPage()));
         inventory.setItem(categoryBackSlot(), backHead("&6&lVolver", List.of("", "&7Regresa al menú principal", "&7de categorías.", "", "&eClick para volver.")));
-        int maxPage = maxPage(recipes.size(), categoryRecipeSlots().size());
+        int maxPage = layout.maxPage();
         if (maxPage > 0) {
             inventory.setItem(categoryPreviousSlot(), arrowLeft("&eAnterior", holder.getPage(), maxPage));
             inventory.setItem(categoryNextSlot(), arrowRight("&eSiguiente", holder.getPage(), maxPage));
@@ -493,9 +509,14 @@ public final class RecipeGuiManager implements Listener {
             return;
         }
 
-        drawRecipeIngredients(inventory, holder, recipe);
-        inventory.setItem(recipeStationSlot(), stationItem(recipe.getStation(), recipe));
-        inventory.setItem(recipeResultSlot(), displayResult(recipe));
+        List<MdvRecipe> linkedRecipes = recipeManager.getLinkedRecipes(recipe, true);
+        int variantCount = Math.max(1, linkedRecipes.size());
+        int variantIndex = variantCount <= 1 ? 0 : holder.getLinkedCycleIndex() % variantCount;
+        MdvRecipe displayRecipe = linkedRecipes.get(variantIndex);
+
+        drawRecipeIngredients(inventory, holder, displayRecipe);
+        inventory.setItem(recipeStationSlot(), stationItem(displayRecipe.getStation(), displayRecipe, variantIndex, variantCount));
+        inventory.setItem(recipeResultSlot(), displayResult(displayRecipe));
         inventory.setItem(recipeBackSlot(), backHead("&6&lVolver", List.of("", "&7Regresa al menú anterior.", "", "&eClick para volver.")));
     }
 
@@ -580,9 +601,19 @@ public final class RecipeGuiManager implements Listener {
         }
     }
 
+    private void drawRecipeResults(Inventory inventory, RecipeMenuHolder holder, Map<Integer, MdvRecipe> pageRecipes) {
+        for (Map.Entry<Integer, MdvRecipe> entry : pageRecipes.entrySet()) {
+            int slot = entry.getKey();
+            MdvRecipe recipe = entry.getValue();
+            inventory.setItem(slot, displayResult(recipe, holder.isAdminMode()));
+            holder.getRecipeSlots().put(slot, recipe);
+        }
+    }
+
     private void drawRecipeResults(Inventory inventory, RecipeMenuHolder holder, List<MdvRecipe> recipes, List<Integer> slots) {
-        recipes.sort(Comparator.comparing(MdvRecipe::getId));
-        int maxPage = maxPage(recipes.size(), slots.size());
+        List<MdvRecipe> ordered = new ArrayList<>(recipes);
+        ordered.sort(recipeManager.displayComparator());
+        int maxPage = maxPage(ordered.size(), slots.size());
         if (holder.getPage() > maxPage) {
             holder.setPage(maxPage);
         }
@@ -590,10 +621,10 @@ public final class RecipeGuiManager implements Listener {
         for (int i = 0; i < slots.size(); i++) {
             int index = start + i;
             int slot = slots.get(i);
-            if (index >= recipes.size()) {
+            if (index >= ordered.size()) {
                 continue;
             }
-            MdvRecipe recipe = recipes.get(index);
+            MdvRecipe recipe = ordered.get(index);
             inventory.setItem(slot, displayResult(recipe, holder.isAdminMode()));
             holder.getRecipeSlots().put(slot, recipe);
         }
@@ -663,6 +694,7 @@ public final class RecipeGuiManager implements Listener {
     }
 
     private void openInventory(Player player, Inventory inventory) {
+        cleanupCursorIfGuiItem(player);
         internalTransitions.add(player.getUniqueId());
         player.openInventory(inventory);
         Bukkit.getScheduler().runTask(plugin, () -> internalTransitions.remove(player.getUniqueId()));
@@ -686,8 +718,12 @@ public final class RecipeGuiManager implements Listener {
         return includeHidden ? recipeManager.getByCategory(category) : recipeManager.getVisibleByCategory(category);
     }
 
+    private List<MdvRecipe> currentCategoryDisplayRecipes(String category, boolean includeHidden) {
+        return recipeManager.collapseDisplayGroups(currentCategoryRecipes(category, includeHidden));
+    }
+
     private List<MdvRecipe> currentSearchRecipes(ItemStack searchItem) {
-        return new ArrayList<>(recipeManager.findVisibleRecipesUsing(searchItem));
+        return new ArrayList<>(recipeManager.findVisibleDisplayRecipesUsing(searchItem));
     }
 
     private ItemStack displayResult(MdvRecipe recipe) {
@@ -726,7 +762,7 @@ public final class RecipeGuiManager implements Listener {
         return item;
     }
 
-    private ItemStack stationItem(StationType station, MdvRecipe recipe) {
+    private ItemStack stationItem(StationType station, MdvRecipe recipe, int variantIndex, int variantCount) {
         List<String> lore = new ArrayList<>();
         lore.add("");
         lore.add("&7Dónde se fabrica:");
@@ -734,6 +770,10 @@ public final class RecipeGuiManager implements Listener {
         lore.add("");
         lore.add("&7Categoría: &f" + prettyCategory(recipe.getCategory()));
         lore.add("&7Tipo: &f" + recipeTypeName(recipe.getType()));
+        if (variantCount > 1) {
+            lore.add("&7Variante: &e" + (variantIndex + 1) + "&7/&e" + variantCount);
+            lore.add("&8Esta receta cambia sola cada 1.5s.");
+        }
         if (recipe.getForjador().getExp() > 0) {
             lore.add("&7Forjador: &e+" + formatDouble(recipe.getForjador().getExp()) + " EXP");
         }
@@ -780,6 +820,7 @@ public final class RecipeGuiManager implements Listener {
             }
             meta.setLore(coloredLore);
             meta.addItemFlags(ItemFlag.values());
+            tagGuiItem(meta);
             item.setItemMeta(meta);
         }
         return item;
@@ -796,6 +837,7 @@ public final class RecipeGuiManager implements Listener {
                 coloredLore.add(color(line));
             }
             skullMeta.setLore(coloredLore);
+            tagGuiItem(skullMeta);
             item.setItemMeta(skullMeta);
             return item;
         }
@@ -1111,7 +1153,132 @@ public final class RecipeGuiManager implements Listener {
         return String.format(Locale.US, "%.2f", value).replaceAll("0+$", "").replaceAll("\\.$", "");
     }
 
+    private CategoryLayout layoutCategoryRecipes(List<MdvRecipe> recipes, List<Integer> slots) {
+        List<MdvRecipe> ordered = new ArrayList<>(recipes);
+        ordered.sort(recipeManager.displayComparator());
+
+        Map<Integer, Map<Integer, MdvRecipe>> pages = new HashMap<>();
+        List<MdvRecipe> automatic = new ArrayList<>();
+
+        for (MdvRecipe recipe : ordered) {
+            Optional<VisualPosition> position = visualPositionFor(recipe, slots);
+            if (position.isEmpty()) {
+                automatic.add(recipe);
+                continue;
+            }
+            int page = position.get().page();
+            int slot = position.get().slot();
+            Map<Integer, MdvRecipe> pageMap = pages.computeIfAbsent(page, ignored -> new LinkedHashMap<>());
+            if (pageMap.containsKey(slot)) {
+                automatic.add(recipe);
+                continue;
+            }
+            pageMap.put(slot, recipe);
+        }
+
+        int page = 0;
+        int slotIndex = 0;
+        for (MdvRecipe recipe : automatic) {
+            while (true) {
+                Map<Integer, MdvRecipe> pageMap = pages.computeIfAbsent(page, ignored -> new LinkedHashMap<>());
+                while (slotIndex < slots.size() && pageMap.containsKey(slots.get(slotIndex))) {
+                    slotIndex++;
+                }
+                if (slotIndex < slots.size()) {
+                    pageMap.put(slots.get(slotIndex), recipe);
+                    slotIndex++;
+                    break;
+                }
+                page++;
+                slotIndex = 0;
+            }
+        }
+
+        int maxPage = 0;
+        for (Map.Entry<Integer, Map<Integer, MdvRecipe>> entry : pages.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                maxPage = Math.max(maxPage, entry.getKey());
+            }
+        }
+        return new CategoryLayout(pages, maxPage);
+    }
+
+    private Optional<VisualPosition> visualPositionFor(MdvRecipe recipe, List<Integer> allowedSlots) {
+        for (MdvRecipe candidate : recipeManager.getLinkedRecipes(recipe, true)) {
+            if (!candidate.hasVisualPosition()) {
+                continue;
+            }
+            if (!allowedSlots.contains(candidate.getVisualSlot())) {
+                continue;
+            }
+            return Optional.of(new VisualPosition(candidate.getVisualPage() - 1, candidate.getVisualSlot()));
+        }
+        return Optional.empty();
+    }
+
+    private void tickLinkedRecipeViews() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (!(player.getOpenInventory().getTopInventory().getHolder() instanceof RecipeMenuHolder holder)) {
+                continue;
+            }
+            if (holder.getScreen() != RecipeMenuHolder.Screen.RECIPE || holder.getRecipe() == null) {
+                continue;
+            }
+            if (recipeManager.getLinkedRecipes(holder.getRecipe(), true).size() <= 1) {
+                continue;
+            }
+            holder.nextLinkedCycleIndex();
+            renderRecipe(holder);
+        }
+    }
+
+    private void tagGuiItem(ItemMeta meta) {
+        if (meta == null) {
+            return;
+        }
+        meta.getPersistentDataContainer().set(guiItemKey, PersistentDataType.BYTE, (byte) 1);
+    }
+
+    private boolean isTaggedGuiItem(ItemStack item) {
+        if (item == null || item.getType().isAir() || !item.hasItemMeta()) {
+            return false;
+        }
+        ItemMeta meta = item.getItemMeta();
+        return meta != null && meta.getPersistentDataContainer().has(guiItemKey, PersistentDataType.BYTE);
+    }
+
+    private void cleanupCursorIfGuiItem(Player player) {
+        if (isTaggedGuiItem(player.getItemOnCursor())) {
+            player.setItemOnCursor(new ItemStack(Material.AIR));
+        }
+    }
+
+    private void cleanupEscapedGuiItems(Player player) {
+        cleanupCursorIfGuiItem(player);
+        PlayerInventory inventory = player.getInventory();
+        boolean changed = false;
+        for (int i = 0; i < inventory.getSize(); i++) {
+            ItemStack item = inventory.getItem(i);
+            if (isTaggedGuiItem(item)) {
+                inventory.setItem(i, null);
+                changed = true;
+            }
+        }
+        if (changed) {
+            player.updateInventory();
+        }
+    }
+
     private record CategoryInfo(String id, String name, Material icon) {
+    }
+
+    private record CategoryLayout(Map<Integer, Map<Integer, MdvRecipe>> pages, int maxPage) {
+        Map<Integer, MdvRecipe> recipesForPage(int page) {
+            return pages.getOrDefault(page, Map.of());
+        }
+    }
+
+    private record VisualPosition(int page, int slot) {
     }
 
     private record SearchSession(ItemStack item, int sourceSlot) {

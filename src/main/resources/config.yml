@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVRecetas 0.6.3
+# MDVRecetas 0.6.5
 # Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
@@ -95,6 +95,8 @@ gui:
     station-slot: 23
     result-slot: 25
     back-slot: 45
+    # Recetas vinculadas: cada cuantos ticks cambia la variante mostrada. 30 ticks = 1.5s.
+    linked-cycle-ticks: 30
 
   categories:
     ARMAS_CUERPO_A_CUERPO:

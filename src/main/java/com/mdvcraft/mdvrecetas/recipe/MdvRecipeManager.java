@@ -132,6 +132,89 @@ public final class MdvRecipeManager {
         return result;
     }
 
+    public List<MdvRecipe> collapseDisplayGroups(List<MdvRecipe> input) {
+        if (input == null || input.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashMap<String, List<MdvRecipe>> grouped = new LinkedHashMap<>();
+        List<MdvRecipe> standalone = new ArrayList<>();
+        for (MdvRecipe recipe : input) {
+            if (recipe == null) {
+                continue;
+            }
+            if (!recipe.hasVisualGroup()) {
+                standalone.add(recipe);
+                continue;
+            }
+            grouped.computeIfAbsent(normalizeGroup(recipe.getVisualGroup()), ignored -> new ArrayList<>()).add(recipe);
+        }
+        List<MdvRecipe> result = new ArrayList<>(standalone);
+        for (List<MdvRecipe> group : grouped.values()) {
+            result.add(chooseDisplayRepresentative(group));
+        }
+        result.sort(displayComparator());
+        return result;
+    }
+
+    public MdvRecipe displayRepresentative(MdvRecipe recipe) {
+        if (recipe == null || !recipe.hasVisualGroup()) {
+            return recipe;
+        }
+        List<MdvRecipe> visibleGroup = getLinkedRecipes(recipe, false);
+        if (!visibleGroup.isEmpty()) {
+            return chooseDisplayRepresentative(visibleGroup);
+        }
+        return chooseDisplayRepresentative(getLinkedRecipes(recipe, true));
+    }
+
+    public List<MdvRecipe> getLinkedRecipes(MdvRecipe recipe) {
+        return getLinkedRecipes(recipe, false);
+    }
+
+    public List<MdvRecipe> getLinkedRecipes(MdvRecipe recipe, boolean includeHidden) {
+        if (recipe == null || !recipe.hasVisualGroup()) {
+            return recipe == null ? List.of() : List.of(recipe);
+        }
+        String group = normalizeGroup(recipe.getVisualGroup());
+        List<MdvRecipe> result = new ArrayList<>();
+        for (MdvRecipe candidate : recipesByKey.values()) {
+            if (!includeHidden && candidate.isHidden()) {
+                continue;
+            }
+            if (candidate.hasVisualGroup() && normalizeGroup(candidate.getVisualGroup()).equals(group)) {
+                result.add(candidate);
+            }
+        }
+        if (result.isEmpty()) {
+            result.add(recipe);
+        }
+        result.sort(displayComparator());
+        return result;
+    }
+
+    private MdvRecipe chooseDisplayRepresentative(List<MdvRecipe> group) {
+        if (group == null || group.isEmpty()) {
+            return null;
+        }
+        return group.stream()
+                .min(Comparator
+                        .comparing((MdvRecipe recipe) -> !recipe.isVisualPrimary())
+                        .thenComparing(recipe -> !recipe.hasVisualPosition())
+                        .thenComparingInt(MdvRecipe::getVisualOrder)
+                        .thenComparing(MdvRecipe::getId, String.CASE_INSENSITIVE_ORDER))
+                .orElse(group.get(0));
+    }
+
+    public Comparator<MdvRecipe> displayComparator() {
+        return Comparator
+                .comparingInt(MdvRecipe::getVisualOrder)
+                .thenComparing(MdvRecipe::getId, String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private String normalizeGroup(String raw) {
+        return raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+    }
+
     public List<MdvRecipe> findRecipesUsing(ItemStack itemStack) {
         if (itemStack == null || itemStack.getType().isAir()) {
             return List.of();
@@ -158,6 +241,25 @@ public final class MdvRecipeManager {
         return result;
     }
 
+    public List<MdvRecipe> findVisibleDisplayRecipesUsing(ItemStack itemStack) {
+        if (itemStack == null || itemStack.getType().isAir()) {
+            return List.of();
+        }
+        List<MdvRecipe> result = new ArrayList<>();
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (!usesIngredient(recipe, itemStack)) {
+                continue;
+            }
+            MdvRecipe representative = displayRepresentative(recipe);
+            if (representative != null && !representative.isHidden()) {
+                result.add(representative);
+            } else if (!recipe.isHidden()) {
+                result.add(recipe);
+            }
+        }
+        return collapseDisplayGroups(result);
+    }
+
     public Optional<MdvRecipe> findVisibleRecipeProducing(ItemSpec itemSpec) {
         if (itemSpec == null) {
             return Optional.empty();
@@ -171,7 +273,7 @@ public final class MdvRecipeManager {
                 continue;
             }
             if (itemResolver.matches(result, itemSpec)) {
-                return Optional.of(recipe);
+                return Optional.of(displayRepresentative(recipe));
             }
         }
         return Optional.empty();

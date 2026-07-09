@@ -1,15 +1,90 @@
-# MDVRecetas 0.6.4
+# MDVRecetas 0.6.5
 
 Motor de recetas custom para MDVCRAFT.
 
-## Nuevo en 0.6.4
+## Nuevo en 0.6.5
 
-- Hotfix visual de modificadores: si el modifier tiene prefix, MDVRecetas lo añade al nombre del item crafteado.
-  - Ejemplo: `&8Oxidado` + `&aCoraza de Soldado` → `&8Oxidado &aCoraza de Soldado`.
-- La tabla de modificadores por Forjador ahora vive en `plugins/MDVRecetas/modifiers.yml`.
-- `config.yml` queda más limpio.
-- Compatibilidad con config vieja: si una ruta no existe en `modifiers.yml`, MDVRecetas intenta leerla desde `config.yml`.
-- Se añadió `prefix-overrides` en `modifiers.yml` como respaldo si el prefix no se puede leer automáticamente desde MMOItems.
+- Fix visual: los botones/paneles del menú ahora se marcan como items internos de GUI y se limpian si por bug quedan en el cursor o inventario del jugador al cerrar.
+- Posición manual opcional dentro del visualizador de categoría.
+- Recetas vinculadas opcionales: varias recetas pueden mostrarse como una sola entrada y la vista de receta cambia sus ingredientes automáticamente cada 1.5s.
+- Todo es retrocompatible: las recetas que no usen `visual:` siguen funcionando y ordenándose como antes.
+
+## Posición manual en categoría
+
+Sirve solo para el visualizador dentro de una categoría. La página es 1-based, o sea `page: 1` es la primera página.
+
+```yaml
+recipes:
+  ejemplo_item:
+    enabled: true
+    station: CRAFTING_TABLE
+    category: MATERIALES
+    type: SHAPED
+    visual:
+      page: 2
+      slot: 14
+    # resto de la receta...
+```
+
+Si una receta no tiene `visual.page` / `visual.slot`, MDVRecetas la coloca automáticamente como antes. Los items automáticos no pisan slots reservados por recetas con posición manual.
+
+También acepta aliases por compatibilidad:
+
+```yaml
+display:
+  page: 2
+  slot: 14
+```
+
+## Recetas vinculadas
+
+Usa el mismo `visual.group` en todas las recetas que quieras mostrar como una sola entrada. La receta marcada como `primary: true` será la principal en la categoría. En la vista de receta, los ingredientes van rotando.
+
+Ejemplo: varios troncos distintos producen el mismo cargamento.
+
+```yaml
+recipes:
+  cargamento_lena_roble:
+    enabled: true
+    station: CRAFTING_TABLE
+    category: MATERIALES
+    type: SHAPELESS
+    visual:
+      group: cargamento_lena
+      primary: true
+      page: 1
+      slot: 14
+    ingredients:
+      item_1:
+        kind: VANILLA
+        material: OAK_LOG
+        amount: 9
+    result:
+      kind: MMOITEMS
+      type: MATERIAL
+      id: CARGAMENTOLENA
+      amount: 1
+
+  cargamento_lena_abeto:
+    enabled: true
+    station: CRAFTING_TABLE
+    category: MATERIALES
+    type: SHAPELESS
+    visual:
+      group: cargamento_lena
+    ingredients:
+      item_1:
+        kind: VANILLA
+        material: SPRUCE_LOG
+        amount: 9
+    result:
+      kind: MMOITEMS
+      type: MATERIAL
+      id: CARGAMENTOLENA
+      amount: 1
+```
+
+La entrada aparece una sola vez. Al abrirla, la receta cambia cada `gui.recipe.linked-cycle-ticks`, por defecto 30 ticks = 1.5s.
 
 ## Firma
 
@@ -85,27 +160,10 @@ forjador:
 - `/mdvrecetas editor`
 - `/mdvrecetas reload`
 - `/mdvrecetas debugitem`
+- `/mdvrecetas debugforjador`
 - `/mdvrecetas serializehand <id>`
 
-
-## MDVRecetas 0.6.4
-
-Hotfix y placeholders:
-
-- Corrige shift-click/click derecho en recetas con firma o modificadores.
-  - Ahora MDVRecetas procesa cada item creado por separado.
-  - Cada item recibe su propia firma y su propio roll de modificador.
-- Añade placeholders de PlaceholderAPI para mostrar probabilidades actuales de Forjador.
-
-Placeholders recomendados para la UI de MMOCore:
-
-```yaml
-- '&8Calidad de forja actual:'
-- '&7Dañado: &c%mdvrecetas_forjador_chance_danado%% &8| &7Estable: &e%mdvrecetas_forjador_chance_estable%%'
-- '&7Refinado: &a%mdvrecetas_forjador_chance_refinado%% &8| &7Magistral: &2%mdvrecetas_forjador_chance_magistral%%'
-```
-
-Placeholders disponibles:
+## Placeholders disponibles
 
 ```text
 %mdvrecetas_forjador_nivel%
@@ -130,11 +188,3 @@ Estable = normal
 Refinado = good
 Magistral = very-good
 ```
-
-## 0.6.4
-
-- Hotfix de nivel de Forjador para placeholders/probabilidades.
-- MDVRecetas ahora intenta leer el nivel de profesión directamente desde la API de MMOCore por reflexión.
-- PlaceholderAPI queda como fallback.
-- Nuevo comando admin: `/mdvrecetas debugforjador` para revisar qué nivel está leyendo y qué probabilidades calcula.
-- `modifiers.yml` ahora incluye `forjador-modifiers.level.profession-id`.
