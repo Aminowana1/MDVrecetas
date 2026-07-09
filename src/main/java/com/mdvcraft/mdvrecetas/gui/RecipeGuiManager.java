@@ -13,13 +13,16 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -182,8 +185,19 @@ public final class RecipeGuiManager implements Listener {
         int rawSlot = event.getRawSlot();
         boolean topClick = rawSlot >= 0 && rawSlot < event.getView().getTopInventory().getSize();
 
-        if (topClick) {
+        // Safety net: Bukkit/Minecraft can briefly put a decorative GUI item on the
+        // cursor when a custom inventory is closed or swapped very quickly. If that
+        // happens, never let the player place/drop it into their real inventory.
+        if (isTaggedGuiItem(event.getCursor()) || isTaggedGuiItem(player.getItemOnCursor())) {
+            event.setCancelled(true);
             cleanupCursorIfGuiItem(player);
+            Bukkit.getScheduler().runTask(plugin, () -> cleanupEscapedGuiItems(player));
+            return;
+        }
+
+        if (rawSlot < 0) {
+            cleanupCursorIfGuiItem(player);
+            return;
         }
 
         if (!topClick) {
@@ -261,6 +275,27 @@ public final class RecipeGuiManager implements Listener {
         }
         returnSearchItem(player, holder.getInventory());
         Bukkit.getScheduler().runTask(plugin, () -> cleanupEscapedGuiItems(player));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onDrop(PlayerDropItemEvent event) {
+        if (!isTaggedGuiItem(event.getItemDrop().getItemStack())) {
+            return;
+        }
+        // Do not cancel: cancelling may try to return the fake item to a full
+        // inventory/cursor. Removing the entity makes the decorative item vanish.
+        event.getItemDrop().remove();
+        cleanupCursorIfGuiItem(event.getPlayer());
+        Bukkit.getScheduler().runTask(plugin, () -> cleanupEscapedGuiItems(event.getPlayer()));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPickup(EntityPickupItemEvent event) {
+        if (!isTaggedGuiItem(event.getItem().getItemStack())) {
+            return;
+        }
+        event.setCancelled(true);
+        event.getItem().remove();
     }
 
     private void handleMainClick(Player player, RecipeMenuHolder holder, int slot) {
@@ -1255,6 +1290,7 @@ public final class RecipeGuiManager implements Listener {
 
     private void cleanupEscapedGuiItems(Player player) {
         cleanupCursorIfGuiItem(player);
+        removeNearbyDroppedGuiItems(player);
         PlayerInventory inventory = player.getInventory();
         boolean changed = false;
         for (int i = 0; i < inventory.getSize(); i++) {
@@ -1267,6 +1303,14 @@ public final class RecipeGuiManager implements Listener {
         if (changed) {
             player.updateInventory();
         }
+    }
+
+    private void removeNearbyDroppedGuiItems(Player player) {
+        player.getWorld().getNearbyEntities(player.getLocation(), 3.0D, 3.0D, 3.0D).forEach(entity -> {
+            if (entity instanceof Item dropped && isTaggedGuiItem(dropped.getItemStack())) {
+                dropped.remove();
+            }
+        });
     }
 
     private record CategoryInfo(String id, String name, Material icon) {

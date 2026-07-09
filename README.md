@@ -1,4 +1,4 @@
-# MDVRecetas 0.6.5
+# MDVRecetas 0.6.6
 
 Motor de recetas custom para MDVCRAFT.
 
@@ -188,3 +188,10 @@ Estable = normal
 Refinado = good
 Magistral = very-good
 ```
+
+
+## Fix en 0.6.6
+
+- Refuerzo del limpiador de items internos de GUI.
+- Si un panel decorativo escapa al cursor, inventario o se dropea al cerrar con inventario lleno, se elimina automáticamente.
+- Bloqueo de pickup de items internos de GUI marcados por MDVRecetas.
