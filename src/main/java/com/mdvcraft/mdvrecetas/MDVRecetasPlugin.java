@@ -51,7 +51,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.5 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.7 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);

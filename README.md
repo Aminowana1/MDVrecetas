@@ -1,4 +1,4 @@
-# MDVRecetas 0.6.6
+# MDVRecetas 0.6.7
 
 Motor de recetas custom para MDVCRAFT.
 
@@ -195,3 +195,12 @@ Magistral = very-good
 - Refuerzo del limpiador de items internos de GUI.
 - Si un panel decorativo escapa al cursor, inventario o se dropea al cerrar con inventario lleno, se elimina automáticamente.
 - Bloqueo de pickup de items internos de GUI marcados por MDVRecetas.
+
+
+## Fix en 0.6.7
+
+- Corrige una duplicación grave de objetos del visualizador de recetas.
+- El slot 40 solo se devuelve al jugador cuando pertenece realmente al buscador (`MAIN`/`SEARCH`).
+- Los resultados e ingredientes mostrados como vista previa ahora se marcan como objetos internos de GUI.
+- Al deshabilitar o recargar el plugin, el inventario visual se limpia de forma síncrona antes de cerrarse.
+- Evita que recetas colocadas visualmente en el slot 40, como `BOTASORCO`, sean entregadas gratis al cerrar o recargar.

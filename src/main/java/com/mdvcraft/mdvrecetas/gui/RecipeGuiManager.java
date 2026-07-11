@@ -167,8 +167,12 @@ public final class RecipeGuiManager implements Listener {
     public void closeAllAndReturnSearchItems() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getOpenInventory().getTopInventory().getHolder() instanceof RecipeMenuHolder holder) {
-                returnSearchItem(player, holder.getInventory());
+                returnSearchItem(player, holder);
+                // Remove every preview before closing. During plugin disable/reload,
+                // scheduled cleanup tasks may never run because Bukkit cancels them.
+                holder.getInventory().clear();
                 player.closeInventory();
+                cleanupEscapedGuiItems(player);
             }
         }
     }
@@ -273,7 +277,7 @@ public final class RecipeGuiManager implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> cleanupEscapedGuiItems(player));
             return;
         }
-        returnSearchItem(player, holder.getInventory());
+        returnSearchItem(player, holder);
         Bukkit.getScheduler().runTask(plugin, () -> cleanupEscapedGuiItems(player));
     }
 
@@ -300,7 +304,7 @@ public final class RecipeGuiManager implements Listener {
 
     private void handleMainClick(Player player, RecipeMenuHolder holder, int slot) {
         if (slot == mainBackSlot()) {
-            returnSearchItem(player, holder.getInventory());
+            returnSearchItem(player, holder);
             socialHook.play(player, "back");
             if (holder.isAdminMode()) {
                 player.closeInventory();
@@ -387,7 +391,7 @@ public final class RecipeGuiManager implements Listener {
 
     private void handleSearchClick(Player player, RecipeMenuHolder holder, int slot) {
         if (slot == searchBackSlot()) {
-            returnSearchItem(player, holder.getInventory());
+            returnSearchItem(player, holder);
             openMain(player, 0);
             socialHook.play(player, "back");
             return;
@@ -691,16 +695,25 @@ public final class RecipeGuiManager implements Listener {
         socialHook.play(player, "open");
     }
 
-    private void returnSearchItem(Player player, Inventory inventory) {
+    private void returnSearchItem(Player player, RecipeMenuHolder holder) {
         SearchSession session = searchSessions.remove(player.getUniqueId());
         ItemStack item = session == null ? null : session.item().clone();
-        if ((item == null || item.getType().isAir()) && inventory != null) {
+
+        Inventory inventory = holder == null ? null : holder.getInventory();
+        boolean hasEditableSearchSlot = holder != null
+                && (holder.getScreen() == RecipeMenuHolder.Screen.MAIN
+                || holder.getScreen() == RecipeMenuHolder.Screen.SEARCH);
+
+        // Slot 40 is the search input only in MAIN/SEARCH. In CATEGORY it is a
+        // normal recipe-display slot (for example BOTASORCO), so reading it from
+        // every menu duplicated preview results whenever the GUI/plugin closed.
+        if ((item == null || item.getType().isAir()) && hasEditableSearchSlot && inventory != null) {
             item = inventory.getItem(searchCenterSlot());
             if (item != null) {
                 item = item.clone();
             }
         }
-        if (inventory != null && inventory.getSize() > searchCenterSlot()) {
+        if (hasEditableSearchSlot && inventory != null && inventory.getSize() > searchCenterSlot()) {
             inventory.setItem(searchCenterSlot(), null);
         }
         if (item == null || item.getType().isAir()) {
@@ -784,6 +797,7 @@ public final class RecipeGuiManager implements Listener {
                 item.setItemMeta(meta);
             }
         }
+        tagPreviewItem(item);
         return item;
     }
 
@@ -794,6 +808,7 @@ public final class RecipeGuiManager implements Listener {
         }
         item = item.clone();
         item.setAmount(Math.max(1, spec.getAmount()));
+        tagPreviewItem(item);
         return item;
     }
 
@@ -1272,6 +1287,18 @@ public final class RecipeGuiManager implements Listener {
             return;
         }
         meta.getPersistentDataContainer().set(guiItemKey, PersistentDataType.BYTE, (byte) 1);
+    }
+
+    private void tagPreviewItem(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return;
+        }
+        tagGuiItem(meta);
+        item.setItemMeta(meta);
     }
 
     private boolean isTaggedGuiItem(ItemStack item) {
