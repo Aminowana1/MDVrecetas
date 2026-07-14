@@ -204,3 +204,26 @@ Magistral = very-good
 - Los resultados e ingredientes mostrados como vista previa ahora se marcan como objetos internos de GUI.
 - Al deshabilitar o recargar el plugin, el inventario visual se limpia de forma síncrona antes de cerrarse.
 - Evita que recetas colocadas visualmente en el slot 40, como `BOTASORCO`, sean entregadas gratis al cerrar o recargar.
+
+
+## MDVRecetas 0.6.8 - MMOItems dinámicos y archivos del editor
+
+Los ingredientes MMOItems aceptan `match: MMO_ID`. Este modo compara solamente `type + id` y por eso ignora datos dinámicos como firma de crafteo, prefijos/modificadores, durabilidad actual, runas y otros NBT agregados al objeto.
+
+```yaml
+ingredients:
+  A:
+    kind: MMOITEMS
+    type: TOOL
+    id: PICOTA_VIRIDITA
+    amount: 1
+    match: MMO_ID
+```
+
+Modos disponibles:
+- `MMO_ID`: identidad estable TYPE + ID; recomendado para herramientas usadas como ingrediente.
+- `SIMILAR`: exige que el meta sea similar al objeto base.
+- `EXACT`: exige igualdad completa.
+- `TYPE`: material vanilla.
+
+El editor guarda automáticamente los MMOItems nuevos con `match: MMO_ID`. En Opciones de receta aparece **Archivo de guardado**. El selector lista todos los `.yml` y `.yaml` existentes dentro de `plugins/MDVRecetas/recipes/`, incluyendo subcarpetas. Para crear una categoría de archivo basta crear, por ejemplo, `MaterialesRecetas.yml` y recargar MDVRecetas; después aparecerá en el editor.

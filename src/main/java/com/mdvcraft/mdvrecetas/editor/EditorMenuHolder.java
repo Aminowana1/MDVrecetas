@@ -8,7 +8,8 @@ public final class EditorMenuHolder implements InventoryHolder {
     public enum Screen {
         STATION_SELECT,
         CREATOR,
-        OPTIONS
+        OPTIONS,
+        INGREDIENT_MATCH
     }
 
     private Inventory inventory;

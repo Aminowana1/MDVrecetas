@@ -13,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.CraftItemEvent;
+import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -34,6 +35,25 @@ public final class RecipeCraftListener implements Listener {
         this.modifierService = modifierService;
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPrepare(PrepareItemCraftEvent event) {
+        if (event.getInventory() == null) {
+            return;
+        }
+        var match = plugin.getRecipeManager().findMatchingCraftingRecipe(event.getInventory().getMatrix());
+        if (match.isPresent()) {
+            ItemStack result = plugin.getItemResolver().buildItem(match.get().getResult());
+            event.getInventory().setResult(result == null ? null : result.clone());
+            return;
+        }
+
+        Recipe current = event.getRecipe();
+        if (current instanceof Keyed keyed && plugin.getRecipeManager().getByKey(keyed.getKey()).isPresent()) {
+            // El patron material pudo coincidir, pero TYPE+ID/EXACT no.
+            event.getInventory().setResult(null);
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onCraft(CraftItemEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) {
@@ -41,11 +61,15 @@ public final class RecipeCraftListener implements Listener {
         }
 
         Recipe recipe = event.getRecipe();
-        if (!(recipe instanceof Keyed keyed)) {
+        var matched = plugin.getRecipeManager().findMatchingCraftingRecipe(
+                event.getInventory() instanceof CraftingInventory crafting ? crafting.getMatrix() : null
+        );
+        if (matched.isEmpty()) {
             return;
         }
 
-        plugin.getRecipeManager().getByKey(keyed.getKey()).ifPresent(mdvRecipe -> {
+        MdvRecipe mdvRecipe = matched.get();
+        {
             // Cuando hay firma o modificadores, cada item creado debe procesarse por separado.
             // Si dejamos que Bukkit resuelva shift-click/click derecho, puede crear varios resultados
             // pero solo el primer ItemStack pasa por nuestra firma/roll. Por eso interceptamos esos
@@ -55,9 +79,9 @@ public final class RecipeCraftListener implements Listener {
                 return;
             }
 
-            ItemStack current = event.getCurrentItem();
+            ItemStack current = plugin.getItemResolver().buildItem(mdvRecipe.getResult());
             if (current == null || current.getType().isAir()) {
-                current = recipe.getResult();
+                current = event.getCurrentItem();
             }
             if (current != null && !current.getType().isAir()) {
                 ItemStack finalResult = processResult(current, player, mdvRecipe);
@@ -69,7 +93,7 @@ public final class RecipeCraftListener implements Listener {
 
             int crafts = estimateCrafts(event);
             awardCraftXp(player, event.getInventory().getLocation(), mdvRecipe, crafts);
-        });
+        }
     }
 
     private boolean needsPerItemProcessing(MdvRecipe recipe) {
@@ -88,7 +112,7 @@ public final class RecipeCraftListener implements Listener {
         int possible = maxCraftsFromMatrix(matrix);
         crafts = Math.max(1, Math.min(crafts, possible));
 
-        ItemStack baseResult = bukkitRecipe.getResult();
+        ItemStack baseResult = plugin.getItemResolver().buildItem(mdvRecipe.getResult());
         if (baseResult == null || baseResult.getType().isAir()) {
             return;
         }

@@ -5,6 +5,7 @@ import com.mdvcraft.mdvrecetas.hook.MDVSocialHook;
 import com.mdvcraft.mdvrecetas.hook.MMOItemsHook;
 import com.mdvcraft.mdvrecetas.model.ItemSpec;
 import com.mdvcraft.mdvrecetas.model.MdvRecipe;
+import com.mdvcraft.mdvrecetas.model.MatchMode;
 import com.mdvcraft.mdvrecetas.model.RecipeType;
 import com.mdvcraft.mdvrecetas.model.StationType;
 import com.mdvcraft.mdvrecetas.recipe.MdvRecipeManager;
@@ -98,6 +99,7 @@ public final class EditorGuiManager implements Listener {
             session.clearItems();
             session.setStation(station);
             session.resetOptions();
+            session.setTargetRecipeFile(plugin.getConfig().getString("editor.default-save-file", "editor.yml"));
         }
         EditorMenuHolder holder = new EditorMenuHolder(EditorMenuHolder.Screen.CREATOR, session.getStation());
         Inventory inv = Bukkit.createInventory(holder, SIZE, color(config("editor.titles.creator", "&8&lCrear Receta")));
@@ -120,6 +122,17 @@ public final class EditorGuiManager implements Listener {
         socialHook.play(player, "open");
     }
 
+    private void openIngredientMatchOptions(Player player) {
+        EditorSession session = sessions.computeIfAbsent(player.getUniqueId(), ignored -> new EditorSession());
+        EditorMenuHolder holder = new EditorMenuHolder(EditorMenuHolder.Screen.INGREDIENT_MATCH, session.getStation());
+        Inventory inv = Bukkit.createInventory(holder, SIZE, color(config("editor.titles.ingredient-match", "&8&lComparación de Ingredientes")));
+        holder.setInventory(inv);
+        fill(inv);
+        renderIngredientMatchOptions(inv, session);
+        open(player, inv);
+        socialHook.play(player, "open");
+    }
+
     public void closeAllAndReturnEditorItems() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getOpenInventory().getTopInventory().getHolder() instanceof EditorMenuHolder holder) {
@@ -128,7 +141,7 @@ public final class EditorGuiManager implements Listener {
                     if (session == null || !session.isEditing()) {
                         returnEditorItems(player, holder.getInventory());
                     }
-                } else if (holder.getScreen() == EditorMenuHolder.Screen.OPTIONS) {
+                } else if (holder.getScreen() == EditorMenuHolder.Screen.OPTIONS || holder.getScreen() == EditorMenuHolder.Screen.INGREDIENT_MATCH) {
                     if (session == null || !session.isEditing()) {
                         returnSessionItems(player);
                     }
@@ -167,6 +180,10 @@ public final class EditorGuiManager implements Listener {
             case OPTIONS -> {
                 event.setCancelled(true);
                 handleOptionsClick(player, raw, event.getClick());
+            }
+            case INGREDIENT_MATCH -> {
+                event.setCancelled(true);
+                handleIngredientMatchClick(player, raw);
             }
         }
     }
@@ -208,7 +225,7 @@ public final class EditorGuiManager implements Listener {
             if (session == null || !session.isEditing()) {
                 returnEditorItems(player, holder.getInventory());
             }
-        } else if (holder.getScreen() == EditorMenuHolder.Screen.OPTIONS) {
+        } else if (holder.getScreen() == EditorMenuHolder.Screen.OPTIONS || holder.getScreen() == EditorMenuHolder.Screen.INGREDIENT_MATCH) {
             if (session == null || !session.isEditing()) {
                 returnSessionItems(player);
             }
@@ -374,6 +391,11 @@ public final class EditorGuiManager implements Listener {
         } else if (slot == 36) {
             startChatInput(player, PendingInput.VANILLA_KEY);
             return;
+        } else if (slot == 38) {
+            cycleTargetFile(session, click.isRightClick() ? -1 : 1);
+        } else if (slot == 40) {
+            openIngredientMatchOptions(player);
+            return;
         } else if (slot == 49) {
             openCreator(player, session.getStation(), true);
             return;
@@ -418,6 +440,7 @@ public final class EditorGuiManager implements Listener {
                 "&7Firma: " + (session.isSignature() ? "&aSí" : "&cNo"),
                 "&7Modificadores: " + (session.isModifiers() ? "&aSí" : "&cNo"),
                 "&7Reemplaza vanilla: " + (session.isReplaceVanilla() ? "&aSí" : "&cNo"),
+                "&7Archivo: &f" + session.getTargetRecipeFile(),
                 "", "&eClick para abrir."
         )));
         inv.setItem(SAVE_SLOT, button(Material.LIME_DYE, "&aGuardar receta", List.of("&7Guarda la receta en YAML.", "&7Si está incompleta no se guardará.")));
@@ -486,9 +509,155 @@ public final class EditorGuiManager implements Listener {
                 "&7Ejemplo: &eminecraft:golden_apple",
                 "", "&eClick para escribir la key."
         )));
+        inv.setItem(38, button(Material.BOOK, "&eArchivo de guardado", List.of(
+                "&7Actual: &f" + session.getTargetRecipeFile(),
+                "&7Lee los .yml/.yaml de la carpeta recipes.",
+                "", "&eClick izquierdo: siguiente", "&eClick derecho: anterior"
+        )));
+        inv.setItem(40, button(Material.COMPARATOR, "&dComparación de ingredientes", List.of(
+                "&7Configura cada casilla del 3x3.",
+                "&7Por defecto conserva la comparación antigua.",
+                "&7Solo los MMOItems pueden usar &fMMO_ID&7.",
+                "", "&eClick para abrir."
+        )));
         inv.setItem(49, button(Material.BARRIER, "&eVolver", List.of("&7Regresa al editor de receta.")));
     }
 
+
+    private void renderIngredientMatchOptions(Inventory inv, EditorSession session) {
+        int[] guiSlots = {10, 11, 12, 19, 20, 21, 28, 29, 30};
+        int[] sourceSlots = session.getStation().isCookingStation()
+                ? new int[]{-1, -1, -1, -1, COOKING_INPUT_SLOT, -1, -1, -1, -1}
+                : SHAPED_SLOTS;
+
+        for (int i = 0; i < guiSlots.length; i++) {
+            int sourceSlot = sourceSlots[i];
+            if (sourceSlot < 0) {
+                inv.setItem(guiSlots[i], button(Material.GRAY_STAINED_GLASS_PANE, "&8Sin casilla", List.of("&7Esta estación no usa esta casilla.")));
+                continue;
+            }
+            ItemStack ingredient = session.getItems().get(sourceSlot);
+            if (isEmpty(ingredient)) {
+                inv.setItem(guiSlots[i], button(Material.LIGHT_GRAY_STAINED_GLASS_PANE, "&7Casilla vacía", List.of(
+                        "&7No hay ningún ingrediente", "&7en esta casilla del editor."
+                )));
+                continue;
+            }
+            Optional<MMOItemsHook.MmoIdentity> identity = itemResolver.getMmoItemsHook().readIdentity(ingredient);
+            if (identity.isEmpty()) {
+                ItemStack preview = ingredient.clone();
+                preview.setAmount(1);
+                ItemMeta meta = preview.getItemMeta();
+                if (meta != null) {
+                    List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
+                    lore.add("");
+                    lore.add(color("&8Comparación estándar"));
+                    lore.add(color("&7No es un MMOItem; no se modifica."));
+                    meta.setLore(lore);
+                    preview.setItemMeta(meta);
+                }
+                inv.setItem(guiSlots[i], preview);
+                continue;
+            }
+
+            MatchMode mode = session.getIngredientMatchMode(sourceSlot);
+            ItemStack preview = ingredient.clone();
+            preview.setAmount(1);
+            ItemMeta meta = preview.getItemMeta();
+            if (meta != null) {
+                List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
+                lore.add("");
+                lore.add(color("&7MMOItems: &f" + identity.get().type() + ":" + identity.get().id()));
+                lore.add(color("&7Modo: " + (mode == MatchMode.MMO_ID ? "&aMMO_ID" : "&eESTÁNDAR")));
+                if (mode == MatchMode.MMO_ID) {
+                    lore.add(color("&8Ignora firma, durabilidad,"));
+                    lore.add(color("&8modificadores, prefijos y runas."));
+                } else {
+                    lore.add(color("&8Conserva la comparación anterior"));
+                    lore.add(color("&8del objeto base de MMOItems."));
+                }
+                lore.add("");
+                lore.add(color("&eClick para alternar."));
+                meta.setLore(lore);
+                preview.setItemMeta(meta);
+            }
+            inv.setItem(guiSlots[i], preview);
+        }
+        inv.setItem(49, button(Material.BARRIER, "&eVolver", List.of("&7Regresa a las opciones de receta.")));
+    }
+
+    private void handleIngredientMatchClick(Player player, int clickedSlot) {
+        EditorSession session = sessions.computeIfAbsent(player.getUniqueId(), ignored -> new EditorSession());
+        if (clickedSlot == 49) {
+            EditorMenuHolder holder = new EditorMenuHolder(EditorMenuHolder.Screen.OPTIONS, session.getStation());
+            Inventory inv = Bukkit.createInventory(holder, SIZE, color(config("editor.titles.options", "&8&lOpciones de Receta")));
+            holder.setInventory(inv);
+            fill(inv);
+            renderOptions(inv, session);
+            open(player, inv);
+            socialHook.play(player, "back");
+            return;
+        }
+
+        int[] guiSlots = {10, 11, 12, 19, 20, 21, 28, 29, 30};
+        int index = -1;
+        for (int i = 0; i < guiSlots.length; i++) {
+            if (guiSlots[i] == clickedSlot) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            socialHook.play(player, "invalid");
+            return;
+        }
+        int sourceSlot = session.getStation().isCookingStation()
+                ? (index == 4 ? COOKING_INPUT_SLOT : -1)
+                : SHAPED_SLOTS[index];
+        if (sourceSlot < 0) {
+            player.sendMessage(prefix() + color("&cEsta casilla no se usa en esta estación."));
+            socialHook.play(player, "invalid");
+            return;
+        }
+        ItemStack ingredient = session.getItems().get(sourceSlot);
+        if (isEmpty(ingredient)) {
+            player.sendMessage(prefix() + color("&cNo hay ningún ingrediente en esa casilla."));
+            socialHook.play(player, "invalid");
+            return;
+        }
+        if (itemResolver.getMmoItemsHook().readIdentity(ingredient).isEmpty()) {
+            player.sendMessage(prefix() + color("&7Ese ingrediente no es un MMOItem; conserva su comparación normal."));
+            socialHook.play(player, "invalid");
+            return;
+        }
+
+        MatchMode current = session.getIngredientMatchMode(sourceSlot);
+        MatchMode next = current == MatchMode.MMO_ID ? MatchMode.SIMILAR : MatchMode.MMO_ID;
+        session.setIngredientMatchMode(sourceSlot, next);
+        player.sendMessage(prefix() + color(next == MatchMode.MMO_ID
+                ? "&aLa casilla ahora usa MMO_ID e ignora datos dinámicos."
+                : "&eLa casilla volvió a la comparación estándar."));
+        socialHook.play(player, "default");
+        if (player.getOpenInventory().getTopInventory().getHolder() instanceof EditorMenuHolder holder) {
+            fill(holder.getInventory());
+            renderIngredientMatchOptions(holder.getInventory(), session);
+        }
+    }
+
+    private void cycleTargetFile(EditorSession session, int direction) {
+        List<String> files = recipeManager.listRecipeFileNames();
+        if (files.isEmpty()) {
+            session.setTargetRecipeFile("editor.yml");
+            return;
+        }
+        int current = files.indexOf(session.getTargetRecipeFile());
+        if (current < 0) {
+            current = 0;
+        } else {
+            current = Math.floorMod(current + direction, files.size());
+        }
+        session.setTargetRecipeFile(files.get(current));
+    }
 
     private void deleteEditingRecipe(Player player, EditorSession session) {
         String id = session.getEditingRecipeId();
@@ -511,6 +680,7 @@ public final class EditorGuiManager implements Listener {
 
     private void loadRecipeIntoSession(EditorSession session, MdvRecipe recipe) {
         session.clearItems();
+        session.clearIngredientMatchModes();
         session.setStation(recipe.getStation());
         session.setRecipeType(recipe.getType());
         session.setCategory(recipe.getCategory());
@@ -525,16 +695,18 @@ public final class EditorGuiManager implements Listener {
         session.setOriginalRecipe(recipe);
         session.setReplaceVanilla(recipe.isReplaceVanilla());
         session.setVanillaKey(recipe.getVanillaKey() == null ? "" : recipe.getVanillaKey().toString());
+        session.setTargetRecipeFile(recipeManager.getSourceFileName(recipe.getId())
+                .orElse(plugin.getConfig().getString("editor.default-save-file", "editor.yml")));
 
         if (recipe.getType() == RecipeType.COOKING) {
-            putSpecInSession(session, COOKING_INPUT_SLOT, recipe.getCookingIngredient());
+            putSpecInSession(session, COOKING_INPUT_SLOT, recipe.getCookingIngredient(), true);
         } else if (recipe.getType() == RecipeType.SHAPED) {
             for (int i = 0; i < Math.min(9, SHAPED_SLOTS.length); i++) {
                 int row = i / 3;
                 int col = i % 3;
                 String line = row < recipe.getShape().size() ? recipe.getShape().get(row) : "   ";
                 char symbol = col < line.length() ? line.charAt(col) : ' ';
-                putSpecInSession(session, SHAPED_SLOTS[i], recipe.getShapedIngredients().get(symbol));
+                putSpecInSession(session, SHAPED_SLOTS[i], recipe.getShapedIngredients().get(symbol), true);
             }
         } else {
             int index = 0;
@@ -542,13 +714,13 @@ public final class EditorGuiManager implements Listener {
                 if (index >= SHAPED_SLOTS.length) {
                     break;
                 }
-                putSpecInSession(session, SHAPED_SLOTS[index++], spec);
+                putSpecInSession(session, SHAPED_SLOTS[index++], spec, true);
             }
         }
-        putSpecInSession(session, RESULT_SLOT, recipe.getResult());
+        putSpecInSession(session, RESULT_SLOT, recipe.getResult(), false);
     }
 
-    private void putSpecInSession(EditorSession session, int slot, ItemSpec spec) {
+    private void putSpecInSession(EditorSession session, int slot, ItemSpec spec, boolean ingredient) {
         if (spec == null) {
             return;
         }
@@ -559,6 +731,9 @@ public final class EditorGuiManager implements Listener {
         item = item.clone();
         item.setAmount(Math.max(1, spec.getAmount()));
         session.getItems().put(slot, item);
+        if (ingredient && spec.getKind() == com.mdvcraft.mdvrecetas.model.ItemKind.MMOITEMS) {
+            session.setIngredientMatchMode(slot, spec.getMatchMode());
+        }
     }
 
     private void saveRecipe(Player player, Inventory inv, EditorSession session) {
@@ -580,7 +755,7 @@ public final class EditorGuiManager implements Listener {
                 socialHook.play(player, "invalid");
                 return;
             }
-            File file = new File(new File(plugin.getDataFolder(), plugin.getConfig().getString("settings.recipe-folder", "recipes")), "editor.yml");
+            File file = recipeManager.resolveRecipeFile(session.getTargetRecipeFile());
             YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
             String base = "recipes." + id;
             yaml.set(base + ".enabled", true);
@@ -602,7 +777,7 @@ public final class EditorGuiManager implements Listener {
                     socialHook.play(player, "invalid");
                     return;
                 }
-                saveItemSpec(yaml, base + ".ingredient", input);
+                saveItemSpec(yaml, base + ".ingredient", input, session.getIngredientMatchMode(COOKING_INPUT_SLOT));
                 yaml.set(base + ".cooking.time", session.getCookingTime());
                 yaml.set(base + ".cooking.vanilla-exp", session.getVanillaExp());
             } else if (session.getRecipeType() == RecipeType.SHAPED) {
@@ -611,17 +786,17 @@ public final class EditorGuiManager implements Listener {
                     socialHook.play(player, "invalid");
                     return;
                 }
-                saveShaped(yaml, base, inv);
+                saveShaped(yaml, base, inv, session);
             } else {
                 if (!hasAnyIngredient(inv)) {
                     player.sendMessage(prefix() + color("&cDebes colocar al menos un ingrediente."));
                     socialHook.play(player, "invalid");
                     return;
                 }
-                saveShapeless(yaml, base, inv);
+                saveShapeless(yaml, base, inv, session);
             }
 
-            saveItemSpec(yaml, base + ".result", result);
+            saveItemSpec(yaml, base + ".result", result, null);
             yaml.set(base + ".forjador.exp", session.getForjadorExp());
             yaml.set(base + ".forjador.signature", session.isSignature());
             yaml.set(base + ".forjador.modifiers", session.isModifiers());
@@ -634,7 +809,7 @@ public final class EditorGuiManager implements Listener {
             yaml.save(file);
 
             int count = recipeManager.reloadRecipes();
-            player.sendMessage(prefix() + color("&aReceta guardada como &e" + id + "&a. Recetas cargadas: &e" + count + "&a."));
+            player.sendMessage(prefix() + color("&aReceta guardada como &e" + id + " &aen &f" + session.getTargetRecipeFile() + "&a. Recetas cargadas: &e" + count + "&a."));
             if (!session.isEditing()) {
                 returnEditorItems(player, inv);
             }
@@ -649,7 +824,7 @@ public final class EditorGuiManager implements Listener {
         }
     }
 
-    private void saveShaped(YamlConfiguration yaml, String base, Inventory inv) {
+    private void saveShaped(YamlConfiguration yaml, String base, Inventory inv, EditorSession session) {
         char next = 'A';
         List<String> shape = new ArrayList<>();
         for (int row = 0; row < 3; row++) {
@@ -663,26 +838,26 @@ public final class EditorGuiManager implements Listener {
                 }
                 char symbol = next++;
                 line.append(symbol);
-                saveItemSpec(yaml, base + ".ingredients." + symbol, item);
+                saveItemSpec(yaml, base + ".ingredients." + symbol, item, session.getIngredientMatchMode(slot));
             }
             shape.add(line.toString());
         }
         yaml.set(base + ".shape", shape);
     }
 
-    private void saveShapeless(YamlConfiguration yaml, String base, Inventory inv) {
+    private void saveShapeless(YamlConfiguration yaml, String base, Inventory inv, EditorSession session) {
         int index = 1;
         for (int slot : SHAPED_SLOTS) {
             ItemStack item = inv.getItem(slot);
             if (isEmpty(item)) {
                 continue;
             }
-            saveItemSpec(yaml, base + ".ingredients.item_" + index, item);
+            saveItemSpec(yaml, base + ".ingredients.item_" + index, item, session.getIngredientMatchMode(slot));
             index++;
         }
     }
 
-    private void saveItemSpec(YamlConfiguration yaml, String path, ItemStack raw) {
+    private void saveItemSpec(YamlConfiguration yaml, String path, ItemStack raw, MatchMode requestedMatch) {
         ItemStack item = raw.clone();
         int amount = Math.max(1, item.getAmount());
         Optional<MMOItemsHook.MmoIdentity> identity = itemResolver.getMmoItemsHook().readIdentity(item);
@@ -691,6 +866,13 @@ public final class EditorGuiManager implements Listener {
             yaml.set(path + ".type", identity.get().type());
             yaml.set(path + ".id", identity.get().id());
             yaml.set(path + ".amount", amount);
+            if (requestedMatch == MatchMode.MMO_ID) {
+                yaml.set(path + ".match", "MMO_ID");
+            } else if (requestedMatch == MatchMode.EXACT) {
+                yaml.set(path + ".match", "EXACT");
+            } else {
+                yaml.set(path + ".match", null);
+            }
             return;
         }
         if (itemResolver.isCleanVanilla(item)) {

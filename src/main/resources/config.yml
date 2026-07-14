@@ -135,6 +135,8 @@ gui:
 
 
 editor:
+  # Archivo inicial para recetas nuevas. Los demás .yml/.yaml de recipes/ aparecen en el editor.
+  default-save-file: editor.yml
   titles:
     station-select: '&8&lEditor de Recetas'
     creator: '&8&lCrear Receta'

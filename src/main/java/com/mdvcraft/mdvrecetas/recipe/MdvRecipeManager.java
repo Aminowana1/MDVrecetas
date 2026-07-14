@@ -24,6 +24,7 @@ public final class MdvRecipeManager {
     private final ItemResolver itemResolver;
     private final RecipeParser parser;
     private final Map<NamespacedKey, MdvRecipe> recipesByKey = new LinkedHashMap<>();
+    private final Map<String, String> sourceFileByRecipeId = new HashMap<>();
     private final Set<NamespacedKey> registeredKeys = new HashSet<>();
 
     public MdvRecipeManager(MDVRecetasPlugin plugin, ItemResolver itemResolver) {
@@ -35,6 +36,7 @@ public final class MdvRecipeManager {
     public int reloadRecipes() {
         unregisterOwnRecipes();
         recipesByKey.clear();
+        sourceFileByRecipeId.clear();
         registeredKeys.clear();
 
         File folder = new File(plugin.getDataFolder(), plugin.getConfig().getString("settings.recipe-folder", "recipes"));
@@ -84,6 +86,164 @@ public final class MdvRecipeManager {
             }
         }
         return deleted;
+    }
+
+
+    public Optional<String> getSourceFileName(String recipeId) {
+        if (recipeId == null || recipeId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(sourceFileByRecipeId.get(recipeId.toLowerCase(Locale.ROOT)));
+    }
+
+    public List<String> listRecipeFileNames() {
+        File folder = recipeFolder();
+        List<String> names = new ArrayList<>();
+        for (File file : listYamlFiles(folder)) {
+            names.add(relativeRecipePath(file));
+        }
+        String fallback = plugin.getConfig().getString("editor.default-save-file", "editor.yml");
+        fallback = sanitizeRelativeRecipeFile(fallback);
+        if (!names.contains(fallback)) {
+            names.add(fallback);
+        }
+        names.sort(String.CASE_INSENSITIVE_ORDER);
+        return names;
+    }
+
+    public File resolveRecipeFile(String relativeName) {
+        File folder = recipeFolder();
+        String safe = sanitizeRelativeRecipeFile(relativeName);
+        File file = new File(folder, safe);
+        try {
+            String rootPath = folder.getCanonicalPath() + File.separator;
+            String filePath = file.getCanonicalPath();
+            if (!filePath.startsWith(rootPath)) {
+                throw new IllegalArgumentException("Recipe file escapes recipe folder");
+            }
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Invalid recipe file: " + relativeName, exception);
+        }
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IllegalStateException("Could not create recipe folder: " + parent.getAbsolutePath());
+        }
+        return file;
+    }
+
+    private File recipeFolder() {
+        return new File(plugin.getDataFolder(), plugin.getConfig().getString("settings.recipe-folder", "recipes"));
+    }
+
+    private String relativeRecipePath(File file) {
+        try {
+            return recipeFolder().toPath().toAbsolutePath().normalize()
+                    .relativize(file.toPath().toAbsolutePath().normalize())
+                    .toString().replace(File.separatorChar, '/');
+        } catch (Exception ignored) {
+            return file.getName();
+        }
+    }
+
+    private String sanitizeRelativeRecipeFile(String raw) {
+        String value = raw == null ? "editor.yml" : raw.trim().replace('\\', '/');
+        while (value.startsWith("/")) {
+            value = value.substring(1);
+        }
+        value = value.replace("..", "_");
+        if (!value.toLowerCase(Locale.ROOT).endsWith(".yml") && !value.toLowerCase(Locale.ROOT).endsWith(".yaml")) {
+            value += ".yml";
+        }
+        return value.isBlank() ? "editor.yml" : value;
+    }
+
+    public Optional<MdvRecipe> findMatchingCraftingRecipe(ItemStack[] matrix) {
+        for (MdvRecipe recipe : recipesByKey.values()) {
+            if (recipe.getStation() != StationType.CRAFTING_TABLE || recipe.getType() == RecipeType.COOKING) {
+                continue;
+            }
+            if (matchesCraftingMatrix(recipe, matrix)) {
+                return Optional.of(recipe);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private boolean matchesCraftingMatrix(MdvRecipe recipe, ItemStack[] rawMatrix) {
+        ItemStack[] matrix = normalizeMatrix(rawMatrix);
+        if (recipe.getType() == RecipeType.SHAPED) {
+            for (int row = 0; row < 3; row++) {
+                String line = row < recipe.getShape().size() ? recipe.getShape().get(row) : "";
+                for (int col = 0; col < 3; col++) {
+                    char symbol = col < line.length() ? line.charAt(col) : ' ';
+                    ItemStack actual = matrix[row * 3 + col];
+                    if (symbol == ' ') {
+                        if (actual != null && !actual.getType().isAir()) {
+                            return false;
+                        }
+                        continue;
+                    }
+                    ItemSpec expected = recipe.getShapedIngredients().get(symbol);
+                    if (!itemResolver.matches(actual, expected) || actual.getAmount() < Math.max(1, expected.getAmount())) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        List<ItemStack> actualItems = new ArrayList<>();
+        for (ItemStack item : matrix) {
+            if (item != null && !item.getType().isAir()) {
+                actualItems.add(item);
+            }
+        }
+        List<ItemSpec> expectedItems = new ArrayList<>();
+        for (ItemSpec spec : recipe.getShapelessIngredients().values()) {
+            for (int i = 0; i < Math.max(1, spec.getAmount()); i++) {
+                expectedItems.add(spec);
+            }
+        }
+        if (actualItems.size() != expectedItems.size()) {
+            return false;
+        }
+        boolean[] used = new boolean[actualItems.size()];
+        return matchShapeless(expectedItems, actualItems, used, 0);
+    }
+
+    private boolean matchShapeless(List<ItemSpec> expected, List<ItemStack> actual, boolean[] used, int index) {
+        if (index >= expected.size()) {
+            return true;
+        }
+        ItemSpec spec = expected.get(index);
+        for (int i = 0; i < actual.size(); i++) {
+            if (!used[i] && itemResolver.matches(actual.get(i), spec)) {
+                used[i] = true;
+                if (matchShapeless(expected, actual, used, index + 1)) {
+                    return true;
+                }
+                used[i] = false;
+            }
+        }
+        return false;
+    }
+
+    private ItemStack[] normalizeMatrix(ItemStack[] raw) {
+        ItemStack[] result = new ItemStack[9];
+        if (raw == null) {
+            return result;
+        }
+        if (raw.length == 9) {
+            System.arraycopy(raw, 0, result, 0, 9);
+            return result;
+        }
+        if (raw.length == 4) {
+            result[0] = raw[0];
+            result[1] = raw[1];
+            result[3] = raw[2];
+            result[4] = raw[3];
+        }
+        return result;
     }
 
     public Optional<MdvRecipe> getByKey(NamespacedKey key) {
@@ -379,6 +539,7 @@ public final class MdvRecipeManager {
             try {
                 MdvRecipe recipe = parser.parse(id, section);
                 register(recipe);
+                sourceFileByRecipeId.put(id.toLowerCase(Locale.ROOT), relativeRecipePath(file));
                 loaded++;
             } catch (Exception exception) {
                 plugin.getLogger().log(Level.WARNING, "Could not load recipe '" + id + "' from " + file.getName() + ": " + exception.getMessage(), exception);

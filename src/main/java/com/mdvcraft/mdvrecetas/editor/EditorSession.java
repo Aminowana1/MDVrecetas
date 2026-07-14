@@ -1,6 +1,7 @@
 package com.mdvcraft.mdvrecetas.editor;
 
 import com.mdvcraft.mdvrecetas.model.MdvRecipe;
+import com.mdvcraft.mdvrecetas.model.MatchMode;
 import com.mdvcraft.mdvrecetas.model.RecipeType;
 import com.mdvcraft.mdvrecetas.model.StationType;
 import org.bukkit.inventory.ItemStack;
@@ -23,7 +24,9 @@ public final class EditorSession {
     private MdvRecipe originalRecipe;
     private boolean replaceVanilla = false;
     private String vanillaKey = "";
+    private String targetRecipeFile = "editor.yml";
     private final Map<Integer, ItemStack> items = new HashMap<>();
+    private final Map<Integer, MatchMode> ingredientMatchModes = new HashMap<>();
 
     public StationType getStation() {
         return station;
@@ -144,12 +147,40 @@ public final class EditorSession {
         this.vanillaKey = vanillaKey == null ? "" : vanillaKey;
     }
 
+    public String getTargetRecipeFile() {
+        return targetRecipeFile;
+    }
+
+    public void setTargetRecipeFile(String targetRecipeFile) {
+        this.targetRecipeFile = targetRecipeFile == null || targetRecipeFile.isBlank() ? "editor.yml" : targetRecipeFile;
+    }
+
     public Map<Integer, ItemStack> getItems() {
         return items;
     }
 
     public void clearItems() {
         items.clear();
+    }
+
+    public Map<Integer, MatchMode> getIngredientMatchModes() {
+        return ingredientMatchModes;
+    }
+
+    public MatchMode getIngredientMatchMode(int slot) {
+        return ingredientMatchModes.getOrDefault(slot, MatchMode.SIMILAR);
+    }
+
+    public void setIngredientMatchMode(int slot, MatchMode mode) {
+        if (mode == null || mode == MatchMode.SIMILAR) {
+            ingredientMatchModes.remove(slot);
+        } else {
+            ingredientMatchModes.put(slot, mode);
+        }
+    }
+
+    public void clearIngredientMatchModes() {
+        ingredientMatchModes.clear();
     }
 
     public void clearEditing() {
@@ -172,5 +203,7 @@ public final class EditorSession {
         this.customRecipeId = null;
         this.editingRecipeId = null;
         this.originalRecipe = null;
+        this.targetRecipeFile = "editor.yml";
+        this.ingredientMatchModes.clear();
     }
 }

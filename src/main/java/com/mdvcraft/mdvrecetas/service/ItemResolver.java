@@ -96,6 +96,17 @@ public final class ItemResolver {
             return new RecipeChoice.MaterialChoice(spec.getMaterial());
         }
 
+        // Bukkit no puede expresar "mismo TYPE + ID de MMOItems ignorando NBT dinamico".
+        // Registramos solo el material para que la mesa reconozca el patron y luego
+        // RecipeCraftListener valida la identidad real antes de mostrar/entregar resultado.
+        if (spec.getKind() == ItemKind.MMOITEMS && spec.getMatchMode() == MatchMode.MMO_ID) {
+            ItemStack representative = buildItem(spec);
+            if (representative == null || representative.getType().isAir()) {
+                return null;
+            }
+            return new RecipeChoice.MaterialChoice(representative.getType());
+        }
+
         ItemStack exact = buildItem(spec);
         if (exact == null || exact.getType().isAir()) {
             return null;
@@ -136,6 +147,16 @@ public final class ItemResolver {
         return switch (spec.getKind()) {
             case VANILLA -> itemStack.getType() == spec.getMaterial();
             case MMOITEMS -> {
+                if (spec.getMatchMode() == MatchMode.EXACT || spec.getMatchMode() == MatchMode.SIMILAR) {
+                    ItemStack target = buildItem(spec);
+                    if (target == null) {
+                        yield false;
+                    }
+                    target.setAmount(itemStack.getAmount());
+                    yield spec.getMatchMode() == MatchMode.EXACT
+                            ? itemStack.equals(target)
+                            : itemStack.isSimilar(target);
+                }
                 Optional<MMOItemsHook.MmoIdentity> identity = mmoItemsHook.readIdentity(itemStack);
                 yield identity
                         .filter(value -> value.type().equalsIgnoreCase(spec.getMmoType()) && value.id().equalsIgnoreCase(spec.getMmoId()))
@@ -208,6 +229,12 @@ public final class ItemResolver {
     }
 
     private MatchMode defaultMatchMode(ItemKind kind) {
-        return kind == ItemKind.VANILLA ? MatchMode.TYPE : MatchMode.SIMILAR;
+        if (kind == ItemKind.VANILLA) {
+            return MatchMode.TYPE;
+        }
+        if (kind == ItemKind.MMOITEMS) {
+            return MatchMode.SIMILAR;
+        }
+        return MatchMode.SIMILAR;
     }
 }
