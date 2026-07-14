@@ -32,6 +32,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -758,6 +761,20 @@ public final class EditorGuiManager implements Listener {
             File file = recipeManager.resolveRecipeFile(session.getTargetRecipeFile());
             YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
             String base = "recipes." + id;
+
+            String originalFileName = session.isEditing()
+                    ? recipeManager.getSourceFileName(session.getEditingRecipeId()).orElse(null)
+                    : null;
+            File originalFile = originalFileName == null ? null : recipeManager.resolveRecipeFile(originalFileName);
+            boolean sameFile = originalFile != null && sameCanonicalFile(originalFile, file);
+
+            // Preserve the complete original node before overwriting editor-managed fields.
+            // This keeps visual metadata and future/custom keys unknown to the editor.
+            if (session.isEditing() && originalFile != null && originalFile.exists()) {
+                YamlConfiguration originalYaml = YamlConfiguration.loadConfiguration(originalFile);
+                copyRecipeNode(originalYaml, "recipes." + session.getEditingRecipeId(), yaml, base);
+            }
+
             yaml.set(base + ".enabled", true);
             yaml.set(base + ".station", session.getStation().name());
             yaml.set(base + ".category", session.getCategory());
@@ -800,13 +817,26 @@ public final class EditorGuiManager implements Listener {
             yaml.set(base + ".forjador.exp", session.getForjadorExp());
             yaml.set(base + ".forjador.signature", session.isSignature());
             yaml.set(base + ".forjador.modifiers", session.isModifiers());
-            if (session.isEditing()) {
-                if (!id.equalsIgnoreCase(session.getEditingRecipeId())) {
-                    yaml.set("recipes." + session.getEditingRecipeId(), null);
-                }
-                recipeManager.deleteRecipeFromFiles(session.getEditingRecipeId());
+            if (session.isEditing() && sameFile && !id.equalsIgnoreCase(session.getEditingRecipeId())) {
+                yaml.set("recipes." + session.getEditingRecipeId(), null);
             }
-            yaml.save(file);
+
+            // Destination first: save atomically and verify before touching the source.
+            saveYamlAtomically(yaml, file);
+            YamlConfiguration verification = YamlConfiguration.loadConfiguration(file);
+            if (!verification.isConfigurationSection(base)) {
+                throw new IOException("La receta no pudo verificarse en el archivo de destino.");
+            }
+
+            // Only after a verified destination save, remove the old node from its exact source file.
+            if (session.isEditing() && originalFile != null && originalFile.exists() && !sameFile) {
+                YamlConfiguration originalYaml = YamlConfiguration.loadConfiguration(originalFile);
+                String originalPath = "recipes." + session.getEditingRecipeId();
+                if (originalYaml.contains(originalPath)) {
+                    originalYaml.set(originalPath, null);
+                    saveYamlAtomically(originalYaml, originalFile);
+                }
+            }
 
             int count = recipeManager.reloadRecipes();
             player.sendMessage(prefix() + color("&aReceta guardada como &e" + id + " &aen &f" + session.getTargetRecipeFile() + "&a. Recetas cargadas: &e" + count + "&a."));
@@ -821,6 +851,43 @@ public final class EditorGuiManager implements Listener {
             plugin.getLogger().warning("Could not save editor recipe: " + exception.getMessage());
             exception.printStackTrace();
             socialHook.play(player, "invalid");
+        }
+    }
+
+    private void copyRecipeNode(YamlConfiguration source, String sourcePath,
+                                YamlConfiguration destination, String destinationPath) {
+        ConfigurationSection section = source.getConfigurationSection(sourcePath);
+        if (section == null) {
+            return;
+        }
+        destination.set(destinationPath, null);
+        for (String key : section.getKeys(true)) {
+            if (!section.isConfigurationSection(key)) {
+                destination.set(destinationPath + "." + key, section.get(key));
+            }
+        }
+    }
+
+    private boolean sameCanonicalFile(File first, File second) throws IOException {
+        return first.getCanonicalFile().equals(second.getCanonicalFile());
+    }
+
+    private void saveYamlAtomically(YamlConfiguration yaml, File destination) throws IOException {
+        File parent = destination.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("No se pudo crear la carpeta " + parent.getAbsolutePath());
+        }
+        File temp = new File(parent, destination.getName() + ".tmp");
+        yaml.save(temp);
+        try {
+            Files.move(temp.toPath(), destination.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(temp.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            if (temp.exists() && !temp.delete()) {
+                temp.deleteOnExit();
+            }
         }
     }
 
