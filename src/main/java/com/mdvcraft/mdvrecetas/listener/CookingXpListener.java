@@ -1,6 +1,7 @@
 package com.mdvcraft.mdvrecetas.listener;
 
 import com.mdvcraft.mdvrecetas.MDVRecetasPlugin;
+import com.mdvcraft.mdvrecetas.api.event.MDVRecipeCraftEvent;
 import com.mdvcraft.mdvrecetas.model.MdvRecipe;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
 import com.mdvcraft.mdvrecetas.service.RecipeSignatureService;
@@ -124,7 +125,7 @@ public final class CookingXpListener implements Listener {
         event.setResult(result.clone());
 
         double xp = recipe.getForjador().getExp() * Math.max(1, result.getAmount());
-        addPendingXp(blockKey, recipe, xp);
+        addPendingXp(blockKey, recipe, xp, Math.max(1, result.getAmount()));
     }
 
 
@@ -172,12 +173,28 @@ public final class CookingXpListener implements Listener {
         Player player = event.getPlayer();
         Block block = event.getBlock();
         String blockKey = blockKey(block);
-        PendingCookingXp pending = pendingXp.remove(blockKey);
-        if (pending == null || pending.xp() <= 0) {
+        PendingCookingXp pending = pendingXp.get(blockKey);
+        if (pending == null || pending.producedItems() <= 0) {
             return;
         }
 
-        xpService.award(player, block.getLocation(), pending.xp(), pending.recipeId());
+        int extracted = Math.max(1, event.getItemAmount());
+        int countedItems = Math.min(extracted, pending.producedItems());
+        double awardedXp = pending.xp() * (countedItems / (double) pending.producedItems());
+        int remainingItems = pending.producedItems() - countedItems;
+        double remainingXp = Math.max(0D, pending.xp() - awardedXp);
+        if (remainingItems <= 0) pendingXp.remove(blockKey);
+        else pendingXp.put(blockKey, new PendingCookingXp(remainingXp, pending.recipeId(), pending.recipeKey(), remainingItems, pending.resultAmount()));
+
+        if (awardedXp > 0) xpService.award(player, block.getLocation(), awardedXp, pending.recipeId());
+
+        MdvRecipe recipe = plugin.getRecipeManager().getByKey(pending.recipeKey()).orElse(null);
+        if (recipe != null) {
+            ItemStack result = plugin.getItemResolver().buildItem(recipe.getResult());
+            int operations = Math.max(1, (int) Math.ceil(countedItems / (double) Math.max(1, pending.resultAmount())));
+            plugin.getServer().getPluginManager().callEvent(new MDVRecipeCraftEvent(
+                    player, recipe.getId(), recipe.getCategory(), recipe.getStation(), result, operations, countedItems, true));
+        }
     }
 
 
@@ -223,13 +240,14 @@ public final class CookingXpListener implements Listener {
         return input.clone();
     }
 
-    private void addPendingXp(String blockKey, MdvRecipe recipe, double xp) {
+    private void addPendingXp(String blockKey, MdvRecipe recipe, double xp, int producedItems) {
         PendingCookingXp current = pendingXp.get(blockKey);
-        if (current == null) {
-            pendingXp.put(blockKey, new PendingCookingXp(xp, recipe.getId(), recipe.getKey()));
+        if (current == null || !current.recipeKey().equals(recipe.getKey())) {
+            pendingXp.put(blockKey, new PendingCookingXp(xp, recipe.getId(), recipe.getKey(), producedItems, Math.max(1, recipe.getResult().getAmount())));
             return;
         }
-        pendingXp.put(blockKey, new PendingCookingXp(current.xp() + xp, recipe.getId(), recipe.getKey()));
+        pendingXp.put(blockKey, new PendingCookingXp(current.xp() + xp, recipe.getId(), recipe.getKey(),
+                current.producedItems() + producedItems, Math.max(1, recipe.getResult().getAmount())));
     }
 
     private String blockKey(Block block) {
@@ -241,6 +259,6 @@ public final class CookingXpListener implements Listener {
         return worldId + ":" + location.getBlockX() + ":" + location.getBlockY() + ":" + location.getBlockZ();
     }
 
-    private record PendingCookingXp(double xp, String recipeId, NamespacedKey recipeKey) {
+    private record PendingCookingXp(double xp, String recipeId, NamespacedKey recipeKey, int producedItems, int resultAmount) {
     }
 }
