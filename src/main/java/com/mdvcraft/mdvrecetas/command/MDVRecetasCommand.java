@@ -82,7 +82,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
 
 
     private void handleEditor(CommandSender sender) {
-        if (!sender.hasPermission("mdvrecetas.admin")) {
+        if (!sender.hasPermission("mdvrecetas.editor") && !sender.hasPermission("mdvrecetas.admin")) {
             message(sender, "messages.no-permission");
             return;
         }
@@ -202,7 +202,7 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " debugitem &7- Revisa el item en mano."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " debugforjador &7- Revisa nivel/probabilidades de Forjador."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " admin &7- Abre el catálogo admin de recetas."));
-        sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " editor &7- Abre el editor admin de recetas."));
+        sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " editor &7- Crea una receta nueva sin acceso al catálogo admin."));
         sender.sendMessage(prefix() + ColorUtil.color("&e/" + label + " serializehand <id> &7- Guarda un ItemStack exacto."));
     }
 
@@ -217,13 +217,13 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            List<String> result = new ArrayList<>();
-            for (String option : List.of("open", "reload", "debugitem", "debugforjador", "serializehand", "editor", "admin", "help")) {
-                if (option.startsWith(args[0].toLowerCase(Locale.ROOT))) {
-                    result.add(option);
-                }
+            List<String> available = new ArrayList<>(List.of("open", "help"));
+            if (sender.hasPermission("mdvrecetas.editor") || sender.hasPermission("mdvrecetas.admin")) available.add("editor");
+            if (sender.hasPermission("mdvrecetas.admin")) {
+                available.addAll(List.of("reload", "debugitem", "debugforjador", "serializehand", "admin"));
             }
-            return result;
+            String input = args[0].toLowerCase(Locale.ROOT);
+            return available.stream().filter(option -> option.startsWith(input)).toList();
         }
         return List.of();
     }

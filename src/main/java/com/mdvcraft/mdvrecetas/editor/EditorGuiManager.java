@@ -75,6 +75,10 @@ public final class EditorGuiManager implements Listener {
     }
 
     public void openStationSelect(Player player) {
+        if (!hasCreatePermission(player)) {
+            player.sendMessage(prefix() + color("&cNo tienes permiso para crear recetas."));
+            return;
+        }
         EditorMenuHolder holder = new EditorMenuHolder(EditorMenuHolder.Screen.STATION_SELECT, null);
         Inventory inv = Bukkit.createInventory(holder, SIZE, color(config("editor.titles.station-select", "&8&lEditor de Recetas")));
         holder.setInventory(inv);
@@ -86,6 +90,11 @@ public final class EditorGuiManager implements Listener {
 
 
     public void openEditRecipe(Player player, MdvRecipe recipe) {
+        if (!player.hasPermission("mdvrecetas.admin")) {
+            player.sendMessage(prefix() + color("&cNo tienes permiso para editar recetas existentes."));
+            socialHook.play(player, "invalid");
+            return;
+        }
         if (recipe == null) {
             player.sendMessage(prefix() + color("&cNo se pudo abrir la receta."));
             socialHook.play(player, "invalid");
@@ -136,6 +145,10 @@ public final class EditorGuiManager implements Listener {
         socialHook.play(player, "open");
     }
 
+    private boolean hasCreatePermission(Player player) {
+        return player != null && (player.hasPermission("mdvrecetas.editor") || player.hasPermission("mdvrecetas.admin"));
+    }
+
     public void closeAllAndReturnEditorItems() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getOpenInventory().getTopInventory().getHolder() instanceof EditorMenuHolder holder) {
@@ -161,6 +174,21 @@ public final class EditorGuiManager implements Listener {
             return;
         }
         if (!(event.getView().getTopInventory().getHolder() instanceof EditorMenuHolder holder)) {
+            return;
+        }
+        if (!hasCreatePermission(player)) {
+            event.setCancelled(true);
+            player.closeInventory();
+            player.sendMessage(prefix() + color("&cYa no tienes permiso para usar el editor de recetas."));
+            return;
+        }
+        EditorSession activeSession = sessions.get(player.getUniqueId());
+        if (activeSession != null && activeSession.isEditing() && !player.hasPermission("mdvrecetas.admin")) {
+            event.setCancelled(true);
+            player.closeInventory();
+            sessions.remove(player.getUniqueId());
+            player.sendMessage(prefix() + color("&cNo tienes permiso para editar recetas existentes."));
+            socialHook.play(player, "invalid");
             return;
         }
 

@@ -1,5 +1,5 @@
 name: MDVRecetas
-version: 0.6.11
+version: 0.6.12
 main: com.mdvcraft.mdvrecetas.MDVRecetasPlugin
 api-version: '1.21'
 author: MDVCRAFT
@@ -17,7 +17,12 @@ commands:
     aliases: [recetas, mdvrecipes]
 permissions:
   mdvrecetas.admin:
-    description: Permite administrar MDVRecetas.
+    description: Permite administrar, recargar y editar recetas existentes.
+    default: op
+    children:
+      mdvrecetas.editor: true
+  mdvrecetas.editor:
+    description: Permite crear recetas nuevas desde /mdvrecetas editor, sin editar las existentes.
     default: op
   mdvrecetas.use:
     description: Permite abrir la guía de recetas.

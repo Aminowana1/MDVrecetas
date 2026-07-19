@@ -1,6 +1,12 @@
-# MDVRecetas 0.6.7
+# MDVRecetas 0.6.12
 
 Motor de recetas custom para MDVCRAFT.
+
+## Nuevo en 0.6.12
+
+- `mdvrecetas.editor` permite crear recetas nuevas con `/mdvrecetas editor`.
+- No permite abrir el catálogo admin, editar, eliminar ni sobrescribir recetas existentes.
+- `mdvrecetas.admin` conserva las acciones administrativas completas.
 
 ## Nuevo en 0.6.5
 
