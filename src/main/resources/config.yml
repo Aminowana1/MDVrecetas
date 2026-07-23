@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVRecetas 0.6.5
+# MDVRecetas 0.6.13
 # Motor de recetas custom + guía visual tipo Terraria.
 # ==========================================================
 
@@ -23,6 +23,15 @@ forjador:
     y-offset: 1.35
     duration-ticks: 35
     view-range: 24.0
+
+    # Mantiene como máximo un holograma de XP de MDVRecetas dentro del radio.
+    # Los nuevos avisos reutilizan el TextDisplay existente en vez de crear otro.
+    single-per-radius: true
+    merge-radius: 8.0
+
+    # Cuando llegan varios premios cercanos, muestra la suma acumulada.
+    # Ejemplo: 64 crafteos de 1 XP muestran un único "+64 EXP!".
+    accumulate-xp: true
 
 signature:
   enabled: true

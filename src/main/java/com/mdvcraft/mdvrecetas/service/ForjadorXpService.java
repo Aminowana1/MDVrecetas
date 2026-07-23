@@ -51,7 +51,7 @@ public final class ForjadorXpService {
             return;
         }
         if (mode.equals("HOLOGRAM") || mode.equals("BOTH")) {
-            floatingTextService.spawnXpText(visualLocation, xp, recipeId);
+            floatingTextService.spawnXpText(visualLocation, amount, recipeId);
         }
         if (mode.equals("CHAT") || mode.equals("BOTH")) {
             String message = plugin.getConfig().getString("forjador.message", "&8[&6Forjador&8] &7+&e%xp% XP&7.")

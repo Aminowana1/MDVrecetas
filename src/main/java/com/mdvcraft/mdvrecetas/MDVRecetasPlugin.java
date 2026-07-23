@@ -43,6 +43,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.mdvSocialHook = new MDVSocialHook(this);
         this.itemResolver = new ItemResolver(mmoItemsHook);
         this.floatingTextService = new FloatingTextService(this);
+        this.floatingTextService.cleanupStaleDisplays();
         this.forjadorXpService = new ForjadorXpService(this, floatingTextService);
         this.recipeSignatureService = new RecipeSignatureService(this);
         this.forjadorModifierService = new ForjadorModifierService(this);
@@ -51,7 +52,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.12 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.13 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
@@ -79,6 +80,9 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         if (placeholderExpansion != null) {
             placeholderExpansion.unregister();
             placeholderExpansion = null;
+        }
+        if (floatingTextService != null) {
+            floatingTextService.shutdown();
         }
         if (recipeManager != null) {
             recipeManager.unregisterOwnRecipes();

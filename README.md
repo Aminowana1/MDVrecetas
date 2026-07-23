@@ -1,6 +1,24 @@
-# MDVRecetas 0.6.12
+# MDVRecetas 0.6.13
 
 Motor de recetas custom para MDVCRAFT.
+
+## Nuevo en 0.6.13
+
+- Los hologramas de XP de Forjador se fusionan dentro de un radio configurable.
+- En vez de crear muchos `TextDisplay`, los premios cercanos reutilizan uno solo.
+- La XP puede acumularse visualmente: 64 premios de 1 XP muestran un único `+64 EXP!`.
+- El tiempo de desaparición se renueva con cada premio nuevo.
+- Los hologramas de MDVRecetas se etiquetan y limpian en reload/apagado sin tocar los de otros plugins.
+
+Configuración nueva, retrocompatible:
+
+```yaml
+forjador:
+  hologram:
+    single-per-radius: true
+    merge-radius: 8.0
+    accumulate-xp: true
+```
 
 ## Nuevo en 0.6.12
 
