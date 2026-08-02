@@ -42,6 +42,7 @@ public final class ForjadorModifierService {
     private final NamespacedKey modifierIdKey;
     private final NamespacedKey modifierQualityKey;
     private final NamespacedKey modifierRecipeKey;
+    private final NamespacedKey modifierPrefixKey;
     private FileConfiguration modifierConfig;
 
     public ForjadorModifierService(MDVRecetasPlugin plugin) {
@@ -50,6 +51,7 @@ public final class ForjadorModifierService {
         this.modifierIdKey = new NamespacedKey(plugin, "forjador_modifier_id");
         this.modifierQualityKey = new NamespacedKey(plugin, "forjador_modifier_quality");
         this.modifierRecipeKey = new NamespacedKey(plugin, "forjador_modifier_recipe");
+        this.modifierPrefixKey = new NamespacedKey(plugin, "forjador_modifier_prefix");
         reload();
     }
 
@@ -100,18 +102,19 @@ public final class ForjadorModifierService {
         int level = readForjadorLevel(player);
         Optional<SelectedModifier> selected = selectModifier(resultSpec, level, recipe.getForjador().getModifierPool());
         if (selected.isEmpty()) {
-            return markAsRolled(original.clone(), "none", ModifierQuality.NONE, recipe.getId());
+            return markAsRolled(original.clone(), "none", ModifierQuality.NONE, recipe.getId(), null);
         }
 
         ItemStack modified = buildMmoItemWithModifier(resultSpec, selected.get());
         if (modified == null || modified.getType().isAir()) {
             plugin.getLogger().warning("Could not apply MMOItems modifier '" + selected.get().id() + "' to "
                     + resultSpec.getMmoType() + ":" + resultSpec.getMmoId() + ". Using original item.");
-            return markAsRolled(original.clone(), "failed:" + selected.get().id(), selected.get().quality(), recipe.getId());
+            return markAsRolled(original.clone(), "failed:" + selected.get().id(), selected.get().quality(), recipe.getId(), null);
         }
         modified.setAmount(Math.max(1, original.getAmount()));
-        applyModifierPrefix(modified, selected.get());
-        return markAsRolled(modified, selected.get().id(), selected.get().quality(), recipe.getId());
+        String appliedPrefix = readPrefixFormat(selected.get());
+        applyModifierPrefix(modified, appliedPrefix);
+        return markAsRolled(modified, selected.get().id(), selected.get().quality(), recipe.getId(), appliedPrefix);
     }
 
     private Optional<SelectedModifier> selectModifier(ItemSpec resultSpec, int level, String configuredPool) {
@@ -525,7 +528,7 @@ public final class ForjadorModifierService {
         return meta.getPersistentDataContainer().has(modifierAppliedKey, PersistentDataType.BYTE);
     }
 
-    private ItemStack markAsRolled(ItemStack item, String modifierId, ModifierQuality quality, String recipeId) {
+    private ItemStack markAsRolled(ItemStack item, String modifierId, ModifierQuality quality, String recipeId, String prefix) {
         if (item == null || item.getType().isAir()) {
             return item;
         }
@@ -538,17 +541,16 @@ public final class ForjadorModifierService {
         pdc.set(modifierIdKey, PersistentDataType.STRING, modifierId == null ? "" : modifierId);
         pdc.set(modifierQualityKey, PersistentDataType.STRING, quality == null ? "none" : quality.configKey());
         pdc.set(modifierRecipeKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
+        if (prefix != null && !prefix.isBlank()) {
+            pdc.set(modifierPrefixKey, PersistentDataType.STRING, prefix);
+        }
         item.setItemMeta(meta);
         return item;
     }
 
 
-    private void applyModifierPrefix(ItemStack item, SelectedModifier selected) {
-        if (item == null || item.getType().isAir() || selected == null) {
-            return;
-        }
-        String prefix = readPrefixFormat(selected);
-        if (prefix == null || prefix.isBlank()) {
+    private void applyModifierPrefix(ItemStack item, String prefix) {
+        if (item == null || item.getType().isAir() || prefix == null || prefix.isBlank()) {
             return;
         }
         ItemMeta meta = item.getItemMeta();
@@ -566,6 +568,57 @@ public final class ForjadorModifierService {
         }
         meta.setDisplayName(ColorUtil.color(prefix).trim() + " " + currentName);
         item.setItemMeta(meta);
+    }
+
+
+    /**
+     * Restores MDVRecetas metadata and the visible quality prefix after MMOItems
+     * rebuilds an item because of a Revision ID change. MMOItems can preserve
+     * the native modifier StatHistory, but it does not know about the Bukkit
+     * PDC or prefix overrides added by MDVRecetas after item generation.
+     */
+    public ItemStack restoreAfterRevision(ItemStack oldItem, ItemStack revisedItem) {
+        if (oldItem == null || oldItem.getType().isAir()
+                || revisedItem == null || revisedItem.getType().isAir()) {
+            return revisedItem;
+        }
+
+        ItemMeta oldMeta = oldItem.getItemMeta();
+        if (oldMeta == null) {
+            return revisedItem;
+        }
+        PersistentDataContainer oldPdc = oldMeta.getPersistentDataContainer();
+        if (!oldPdc.has(modifierAppliedKey, PersistentDataType.BYTE)) {
+            return revisedItem;
+        }
+
+        String modifierId = oldPdc.get(modifierIdKey, PersistentDataType.STRING);
+        String quality = oldPdc.get(modifierQualityKey, PersistentDataType.STRING);
+        String recipeId = oldPdc.get(modifierRecipeKey, PersistentDataType.STRING);
+        String prefix = oldPdc.get(modifierPrefixKey, PersistentDataType.STRING);
+
+        if ((prefix == null || prefix.isBlank()) && modifierId != null && !modifierId.isBlank()) {
+            prefix = getString("forjador-modifiers.prefix-overrides." + normalize(modifierId), "");
+        }
+
+        ItemStack restored = revisedItem.clone();
+        ItemMeta newMeta = restored.getItemMeta();
+        if (newMeta == null) {
+            return revisedItem;
+        }
+
+        PersistentDataContainer newPdc = newMeta.getPersistentDataContainer();
+        newPdc.set(modifierAppliedKey, PersistentDataType.BYTE, (byte) 1);
+        newPdc.set(modifierIdKey, PersistentDataType.STRING, modifierId == null ? "" : modifierId);
+        newPdc.set(modifierQualityKey, PersistentDataType.STRING, quality == null ? "none" : quality);
+        newPdc.set(modifierRecipeKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
+        if (prefix != null && !prefix.isBlank()) {
+            newPdc.set(modifierPrefixKey, PersistentDataType.STRING, prefix);
+        }
+        restored.setItemMeta(newMeta);
+
+        applyModifierPrefix(restored, prefix);
+        return restored;
     }
 
     private String readPrefixFormat(SelectedModifier selected) {

@@ -45,28 +45,95 @@ public final class RecipeSignatureService {
             pdc.set(creatorNameKey, PersistentDataType.STRING, player.getName());
             pdc.set(recipeIdKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
 
-            List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
-            for (String rawLine : signatureLines(player, recipeId)) {
-                lore.add(rawLine);
-            }
+            List<String> lore = meta.hasLore() && meta.getLore() != null
+                    ? new ArrayList<>(meta.getLore())
+                    : new ArrayList<>();
+            appendSignatureIfMissing(lore, signatureLines(player.getName(), recipeId));
             meta.setLore(lore);
         }
 
         item.setItemMeta(meta);
         return item;
     }
-    private List<String> signatureLines(Player player, String recipeId) {
+
+    /**
+     * MMOItems recreates the ItemStack when a Revision ID changes. Arbitrary
+     * Bukkit PDC and lore appended by MDVRecetas are not part of MMOItems'
+     * StatHistory, therefore they must be copied to the finished revised item.
+     */
+    public ItemStack restoreAfterRevision(ItemStack oldItem, ItemStack revisedItem) {
+        if (oldItem == null || oldItem.getType().isAir()
+                || revisedItem == null || revisedItem.getType().isAir()) {
+            return revisedItem;
+        }
+
+        ItemMeta oldMeta = oldItem.getItemMeta();
+        if (oldMeta == null) {
+            return revisedItem;
+        }
+        PersistentDataContainer oldPdc = oldMeta.getPersistentDataContainer();
+        String creatorUuid = oldPdc.get(creatorUuidKey, PersistentDataType.STRING);
+        if (creatorUuid == null || creatorUuid.isBlank()) {
+            return revisedItem;
+        }
+
+        String creatorName = oldPdc.get(creatorNameKey, PersistentDataType.STRING);
+        String recipeId = oldPdc.get(recipeIdKey, PersistentDataType.STRING);
+        creatorName = creatorName == null ? "Desconocido" : creatorName;
+        recipeId = recipeId == null ? "" : recipeId;
+
+        ItemStack restored = revisedItem.clone();
+        ItemMeta newMeta = restored.getItemMeta();
+        if (newMeta == null) {
+            return revisedItem;
+        }
+
+        PersistentDataContainer newPdc = newMeta.getPersistentDataContainer();
+        newPdc.set(creatorUuidKey, PersistentDataType.STRING, creatorUuid);
+        newPdc.set(creatorNameKey, PersistentDataType.STRING, creatorName);
+        newPdc.set(recipeIdKey, PersistentDataType.STRING, recipeId);
+
+        List<String> lore = newMeta.hasLore() && newMeta.getLore() != null
+                ? new ArrayList<>(newMeta.getLore())
+                : new ArrayList<>();
+        appendSignatureIfMissing(lore, signatureLines(creatorName, recipeId));
+        newMeta.setLore(lore);
+
+        restored.setItemMeta(newMeta);
+        return restored;
+    }
+
+    private void appendSignatureIfMissing(List<String> lore, List<String> signature) {
+        String marker = lastNonBlank(signature);
+        if (marker != null && lore.contains(marker)) {
+            return;
+        }
+        lore.addAll(signature);
+    }
+
+    private String lastNonBlank(List<String> lines) {
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            String line = lines.get(i);
+            if (line != null && !ColorUtil.stripColor(line).trim().isEmpty()) {
+                return line;
+            }
+        }
+        return null;
+    }
+
+    private List<String> signatureLines(String playerName, String recipeId) {
         List<String> rawLines = plugin.getConfig().getStringList("signature.lore-lines");
         if (rawLines == null || rawLines.isEmpty()) {
-            rawLines = List.of(plugin.getConfig().getString("signature.lore-line", "&l&aForjado por: &e%player%"));
+            rawLines = List.of(plugin.getConfig().getString(
+                    "signature.lore-line", "&l&aForjado por: &e%player%"));
         }
         List<String> lines = new ArrayList<>();
         for (String raw : rawLines) {
             String line = raw == null ? "" : raw;
-            line = line.replace("%player%", player.getName()).replace("%recipe%", recipeId == null ? "" : recipeId);
+            line = line.replace("%player%", playerName == null ? "Desconocido" : playerName)
+                    .replace("%recipe%", recipeId == null ? "" : recipeId);
             lines.add(ColorUtil.color(line));
         }
         return lines;
     }
-
 }

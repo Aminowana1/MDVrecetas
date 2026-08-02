@@ -11,6 +11,7 @@ import com.mdvcraft.mdvrecetas.recipe.MdvRecipeManager;
 import com.mdvcraft.mdvrecetas.service.FloatingTextService;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
 import com.mdvcraft.mdvrecetas.service.ItemResolver;
+import com.mdvcraft.mdvrecetas.service.MMOItemsRevisionCompatibilityService;
 import com.mdvcraft.mdvrecetas.service.RecipeSignatureService;
 import com.mdvcraft.mdvrecetas.service.ForjadorModifierService;
 import org.bukkit.command.PluginCommand;
@@ -52,10 +53,11 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.13 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.14 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
+        new MMOItemsRevisionCompatibilityService(this, recipeSignatureService, forjadorModifierService).register();
         getServer().getPluginManager().registerEvents(recipeGuiManager, this);
         getServer().getPluginManager().registerEvents(editorGuiManager, this);
 
