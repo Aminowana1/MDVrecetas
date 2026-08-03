@@ -56,12 +56,30 @@ public final class RecipeSignatureService {
         return item;
     }
 
+
+    public boolean hasSignatureData(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return false;
+        }
+        ItemMeta meta = item.getItemMeta();
+        return meta != null
+                && meta.getPersistentDataContainer().has(creatorUuidKey, PersistentDataType.STRING);
+    }
+
     /**
      * MMOItems recreates the ItemStack when a Revision ID changes. Arbitrary
      * Bukkit PDC and lore appended by MDVRecetas are not part of MMOItems'
      * StatHistory, therefore they must be copied to the finished revised item.
      */
     public ItemStack restoreAfterRevision(ItemStack oldItem, ItemStack revisedItem) {
+        return restoreAfterMmoItemsMutation(oldItem, revisedItem);
+    }
+
+    /**
+     * Restores the MDVRecetas signature after MMOItems rebuilds an item for
+     * any reason, including Revision ID changes, gem insertion and gem removal.
+     */
+    public ItemStack restoreAfterMmoItemsMutation(ItemStack oldItem, ItemStack revisedItem) {
         if (oldItem == null || oldItem.getType().isAir()
                 || revisedItem == null || revisedItem.getType().isAir()) {
             return revisedItem;

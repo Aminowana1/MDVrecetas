@@ -1,6 +1,13 @@
-# MDVRecetas 0.6.15
+# MDVRecetas 0.6.16
 
 Motor de recetas custom para MDVCRAFT.
+
+## Nuevo en 0.6.16
+
+- Al aplicar o retirar gemas de MMOItems, los objetos fabricados conservan la firma `Forjado por`.
+- El prefijo visible del modificador (`Mellada`, `Afilada`, `Reforzada`, etc.) se reaplica automáticamente.
+- También se conservan los PDC de MDVRecetas usados por Revision ID y por el sistema de ranuras.
+- La corrección se ejecuta únicamente durante la interacción de inventario; no realiza escaneos por tick.
 
 ## Nuevo en 0.6.13
 

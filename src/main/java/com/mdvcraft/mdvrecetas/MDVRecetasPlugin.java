@@ -12,6 +12,7 @@ import com.mdvcraft.mdvrecetas.service.FloatingTextService;
 import com.mdvcraft.mdvrecetas.service.ForjadorXpService;
 import com.mdvcraft.mdvrecetas.service.ItemResolver;
 import com.mdvcraft.mdvrecetas.service.MMOItemsRevisionCompatibilityService;
+import com.mdvcraft.mdvrecetas.service.MMOItemsGemCompatibilityService;
 import com.mdvcraft.mdvrecetas.service.RecipeSignatureService;
 import com.mdvcraft.mdvrecetas.service.ForjadorModifierService;
 import org.bukkit.command.PluginCommand;
@@ -29,6 +30,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
     private FloatingTextService floatingTextService;
     private RecipeSignatureService recipeSignatureService;
     private ForjadorModifierService forjadorModifierService;
+    private MMOItemsGemCompatibilityService mmoItemsGemCompatibilityService;
     private RecipeGuiManager recipeGuiManager;
     private EditorGuiManager editorGuiManager;
     private MDVSocialHook mdvSocialHook;
@@ -53,11 +55,15 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.15 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.16 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         new MMOItemsRevisionCompatibilityService(this, recipeSignatureService, forjadorModifierService).register();
+        this.mmoItemsGemCompatibilityService = new MMOItemsGemCompatibilityService(
+                mmoItemsHook, recipeSignatureService, forjadorModifierService);
+        getServer().getPluginManager().registerEvents(mmoItemsGemCompatibilityService, this);
+        getLogger().info("MMOItems gem/signature compatibility registered.");
         getServer().getPluginManager().registerEvents(recipeGuiManager, this);
         getServer().getPluginManager().registerEvents(editorGuiManager, this);
 
@@ -82,6 +88,10 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         if (placeholderExpansion != null) {
             placeholderExpansion.unregister();
             placeholderExpansion = null;
+        }
+        if (mmoItemsGemCompatibilityService != null) {
+            mmoItemsGemCompatibilityService.clear();
+            mmoItemsGemCompatibilityService = null;
         }
         if (floatingTextService != null) {
             floatingTextService.shutdown();

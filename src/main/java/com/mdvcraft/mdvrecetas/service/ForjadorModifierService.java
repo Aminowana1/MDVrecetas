@@ -845,6 +845,15 @@ public final class ForjadorModifierService {
     }
 
 
+    public boolean hasModifierData(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return false;
+        }
+        ItemMeta meta = item.getItemMeta();
+        return meta != null
+                && meta.getPersistentDataContainer().has(modifierAppliedKey, PersistentDataType.BYTE);
+    }
+
     /**
      * Restores MDVRecetas metadata and the visible quality prefix after MMOItems
      * rebuilds an item because of a Revision ID change. MMOItems can preserve
@@ -852,6 +861,14 @@ public final class ForjadorModifierService {
      * PDC or prefix overrides added by MDVRecetas after item generation.
      */
     public ItemStack restoreAfterRevision(ItemStack oldItem, ItemStack revisedItem) {
+        return restoreAfterMmoItemsMutation(oldItem, revisedItem);
+    }
+
+    /**
+     * Restores MDVRecetas modifier metadata and its visible prefix after any
+     * MMOItems item rebuild, including Revision ID, gem insertion and removal.
+     */
+    public ItemStack restoreAfterMmoItemsMutation(ItemStack oldItem, ItemStack revisedItem) {
         if (oldItem == null || oldItem.getType().isAir()
                 || revisedItem == null || revisedItem.getType().isAir()) {
             return revisedItem;
