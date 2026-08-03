@@ -21,6 +21,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -34,8 +35,15 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class ForjadorModifierService {
+    private static final Pattern SOCKET_GROUP_PATTERN = Pattern.compile(
+            "^mdv_sockets_(fisica|distancia|arcana|soporte)_t([2-5])$",
+            Pattern.CASE_INSENSITIVE
+    );
+
     private final MDVRecetasPlugin plugin;
     private final Random random = new Random();
     private final NamespacedKey modifierAppliedKey;
@@ -43,6 +51,9 @@ public final class ForjadorModifierService {
     private final NamespacedKey modifierQualityKey;
     private final NamespacedKey modifierRecipeKey;
     private final NamespacedKey modifierPrefixKey;
+    private final NamespacedKey socketGroupKey;
+    private final NamespacedKey socketModifierIdKey;
+    private final NamespacedKey socketCountKey;
     private FileConfiguration modifierConfig;
 
     public ForjadorModifierService(MDVRecetasPlugin plugin) {
@@ -52,6 +63,9 @@ public final class ForjadorModifierService {
         this.modifierQualityKey = new NamespacedKey(plugin, "forjador_modifier_quality");
         this.modifierRecipeKey = new NamespacedKey(plugin, "forjador_modifier_recipe");
         this.modifierPrefixKey = new NamespacedKey(plugin, "forjador_modifier_prefix");
+        this.socketGroupKey = new NamespacedKey(plugin, "forjador_socket_group");
+        this.socketModifierIdKey = new NamespacedKey(plugin, "forjador_socket_modifier");
+        this.socketCountKey = new NamespacedKey(plugin, "forjador_socket_count");
         reload();
     }
 
@@ -85,9 +99,6 @@ public final class ForjadorModifierService {
         if (original == null || original.getType().isAir() || player == null || recipe == null || recipe.getForjador() == null) {
             return original;
         }
-        if (!getBoolean("forjador-modifiers.enabled", true)) {
-            return original;
-        }
         if (!recipe.getForjador().isModifiers()) {
             return original;
         }
@@ -100,21 +111,66 @@ public final class ForjadorModifierService {
         }
 
         int level = readForjadorLevel(player);
-        Optional<SelectedModifier> selected = selectModifier(resultSpec, level, recipe.getForjador().getModifierPool());
-        if (selected.isEmpty()) {
-            return markAsRolled(original.clone(), "none", ModifierQuality.NONE, recipe.getId(), null);
+
+        Optional<SelectedModifier> qualityModifier = getBoolean("forjador-modifiers.enabled", true)
+                ? selectModifier(resultSpec, level, recipe.getForjador().getModifierPool())
+                : Optional.empty();
+
+        Optional<SelectedSocketModifier> socketModifier = getBoolean("forjador-sockets.enabled", true)
+                ? selectSocketModifier(resultSpec, level)
+                : Optional.empty();
+
+        if (qualityModifier.isEmpty() && socketModifier.isEmpty()) {
+            return markAsRolled(
+                    original.clone(),
+                    "none",
+                    ModifierQuality.NONE,
+                    recipe.getId(),
+                    null,
+                    null
+            );
         }
 
-        ItemStack modified = buildMmoItemWithModifier(resultSpec, selected.get());
+        List<AppliedModifier> modifiersToApply = new ArrayList<>(2);
+        qualityModifier.ifPresent(selected ->
+                modifiersToApply.add(new AppliedModifier(selected.id(), selected.node())));
+        socketModifier.ifPresent(selected ->
+                modifiersToApply.add(new AppliedModifier(selected.id(), selected.node())));
+
+        ItemStack modified = buildMmoItemWithModifiers(resultSpec, modifiersToApply);
         if (modified == null || modified.getType().isAir()) {
-            plugin.getLogger().warning("Could not apply MMOItems modifier '" + selected.get().id() + "' to "
+            String attempted = modifiersToApply.stream()
+                    .map(AppliedModifier::id)
+                    .reduce((left, right) -> left + ", " + right)
+                    .orElse("none");
+            plugin.getLogger().warning("Could not apply MMOItems modifiers [" + attempted + "] to "
                     + resultSpec.getMmoType() + ":" + resultSpec.getMmoId() + ". Using original item.");
-            return markAsRolled(original.clone(), "failed:" + selected.get().id(), selected.get().quality(), recipe.getId(), null);
+
+            SelectedModifier quality = qualityModifier.orElse(null);
+            return markAsRolled(
+                    original.clone(),
+                    quality == null ? "none" : "failed:" + quality.id(),
+                    quality == null ? ModifierQuality.NONE : quality.quality(),
+                    recipe.getId(),
+                    null,
+                    null
+            );
         }
+
         modified.setAmount(Math.max(1, original.getAmount()));
-        String appliedPrefix = readPrefixFormat(selected.get());
+
+        SelectedModifier quality = qualityModifier.orElse(null);
+        String appliedPrefix = quality == null ? null : readPrefixFormat(quality);
         applyModifierPrefix(modified, appliedPrefix);
-        return markAsRolled(modified, selected.get().id(), selected.get().quality(), recipe.getId(), appliedPrefix);
+
+        return markAsRolled(
+                modified,
+                quality == null ? "none" : quality.id(),
+                quality == null ? ModifierQuality.NONE : quality.quality(),
+                recipe.getId(),
+                appliedPrefix,
+                socketModifier.orElse(null)
+        );
     }
 
     private Optional<SelectedModifier> selectModifier(ItemSpec resultSpec, int level, String configuredPool) {
@@ -137,6 +193,208 @@ public final class ForjadorModifierService {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<SelectedSocketModifier> selectSocketModifier(ItemSpec resultSpec, int level) {
+        Optional<SocketGroup> socketGroup = findSocketGroup(resultSpec);
+        if (socketGroup.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SocketGroup group = socketGroup.get();
+        int socketCount = rollSocketCount(group.tier(), level);
+        if (socketCount <= 0) {
+            return Optional.empty();
+        }
+
+        String expectedModifierId = "mdv_socket_" + group.family() + "_" + socketCount;
+        Map<String, Object> leafNodes = new LinkedHashMap<>();
+        collectLeafNodes(group.node(), leafNodes, new HashSet<>());
+        Object modifierNode = leafNodes.get(normalize(expectedModifierId));
+        if (modifierNode == null) {
+            plugin.getLogger().warning("Socket group '" + group.id() + "' rolled " + socketCount
+                    + " socket(s), but modifier '" + expectedModifierId + "' was not found inside the group.");
+            return Optional.empty();
+        }
+
+        return Optional.of(new SelectedSocketModifier(
+                normalize(expectedModifierId),
+                modifierNode,
+                group.id(),
+                group.family(),
+                group.tier(),
+                socketCount
+        ));
+    }
+
+    private Optional<SocketGroup> findSocketGroup(ItemSpec resultSpec) {
+        Map<String, SocketGroup> groups = new LinkedHashMap<>();
+        try {
+            Object pluginInstance = getMmoItemsPlugin();
+            if (pluginInstance == null) {
+                return Optional.empty();
+            }
+            Object type = getMmoType(pluginInstance, resultSpec.getMmoType());
+            if (type == null) {
+                return Optional.empty();
+            }
+            Object templates = invokeNoArgs(pluginInstance, "getTemplates");
+            Object template = invokeTemplateGetter(templates, type, resultSpec.getMmoId());
+            if (template == null) {
+                return Optional.empty();
+            }
+
+            Object hasGroup = invokeNoArgs(template, "hasModifierGroup");
+            if (hasGroup instanceof Boolean && (Boolean) hasGroup) {
+                collectSocketGroups(invokeNoArgs(template, "getModifierGroup"), groups, new HashSet<>());
+            }
+
+            Object modifiers = invokeNoArgs(template, "getModifiers");
+            if (modifiers instanceof Map<?, ?> map) {
+                for (Object value : map.values()) {
+                    collectSocketGroups(value, groups, new HashSet<>());
+                }
+            }
+        } catch (Throwable exception) {
+            plugin.getLogger().warning("Could not read MMOItems socket modifier group: " + exception.getMessage());
+            return Optional.empty();
+        }
+
+        if (groups.isEmpty()) {
+            return Optional.empty();
+        }
+        SocketGroup selected = groups.values().iterator().next();
+        if (groups.size() > 1) {
+            plugin.getLogger().warning("MMOItem " + resultSpec.getMmoType() + ":" + resultSpec.getMmoId()
+                    + " declares more than one MDV socket group. Using '" + selected.id() + "'.");
+        }
+        return Optional.of(selected);
+    }
+
+    private void collectSocketGroups(Object node, Map<String, SocketGroup> out, Set<Object> visited) {
+        if (node == null || visited.contains(node)) {
+            return;
+        }
+        visited.add(node);
+
+        String rawId = readNodeId(node);
+        String normalizedId = normalize(rawId);
+        Matcher matcher = SOCKET_GROUP_PATTERN.matcher(normalizedId);
+        if (matcher.matches()) {
+            out.putIfAbsent(normalizedId, new SocketGroup(
+                    normalizedId,
+                    matcher.group(1).toLowerCase(Locale.ROOT),
+                    Integer.parseInt(matcher.group(2)),
+                    node
+            ));
+            return;
+        }
+
+        List<?> children = readChildren(node);
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+        for (Object child : children) {
+            collectSocketGroups(child, out, visited);
+        }
+    }
+
+    private int rollSocketCount(int tier, int level) {
+        Map<Integer, Double> chances = currentSocketChancesForLevel(tier, level);
+        double total = 0.0D;
+        for (double chance : chances.values()) {
+            total += Math.max(0.0D, chance);
+        }
+        if (total <= 0.0D) {
+            return 0;
+        }
+
+        double roll = random.nextDouble() * total;
+        double cursor = 0.0D;
+        for (int count = 0; count <= 3; count++) {
+            cursor += Math.max(0.0D, chances.getOrDefault(count, 0.0D));
+            if (roll <= cursor) {
+                return count;
+            }
+        }
+        return 0;
+    }
+
+    private Map<Integer, Double> currentSocketChancesForLevel(int tier, int level) {
+        int min = getInt("forjador-modifiers.level.min", 1);
+        int max = getInt("forjador-modifiers.level.max", 50);
+        double t = max <= min ? 1.0D : (Math.max(min, Math.min(max, level)) - min) / (double) (max - min);
+
+        String basePath = "forjador-sockets.chances.t" + tier;
+        Map<Integer, Double> low = readSocketChancePoint(basePath + ".level-1", tier, false);
+        Map<Integer, Double> high = readSocketChancePoint(basePath + ".level-50", tier, true);
+
+        Map<Integer, Double> interpolated = new LinkedHashMap<>();
+        for (int count = 0; count <= 3; count++) {
+            double lowValue = low.getOrDefault(count, 0.0D);
+            double highValue = high.getOrDefault(count, 0.0D);
+            interpolated.put(count, Math.max(0.0D, lowValue + (highValue - lowValue) * t));
+        }
+        return interpolated;
+    }
+
+    private Map<Integer, Double> readSocketChancePoint(String path, int tier, boolean high) {
+        Map<Integer, Double> values = new LinkedHashMap<>();
+        for (int count = 0; count <= 3; count++) {
+            values.put(count, getDouble(path + "." + count, defaultSocketChance(tier, high, count)));
+        }
+        return values;
+    }
+
+    private double defaultSocketChance(int tier, boolean high, int count) {
+        return switch (tier) {
+            case 2 -> {
+                if (count == 0) {
+                    yield high ? 35.0D : 65.0D;
+                }
+                if (count == 1) {
+                    yield high ? 65.0D : 35.0D;
+                }
+                yield 0.0D;
+            }
+            case 3 -> {
+                if (count == 0) {
+                    yield high ? 5.0D : 25.0D;
+                }
+                if (count == 1) {
+                    yield high ? 55.0D : 60.0D;
+                }
+                if (count == 2) {
+                    yield high ? 40.0D : 15.0D;
+                }
+                yield 0.0D;
+            }
+            case 4 -> {
+                if (count == 1) {
+                    yield high ? 20.0D : 50.0D;
+                }
+                if (count == 2) {
+                    yield high ? 55.0D : 45.0D;
+                }
+                if (count == 3) {
+                    yield high ? 25.0D : 5.0D;
+                }
+                yield 0.0D;
+            }
+            case 5 -> {
+                if (count == 1) {
+                    yield high ? 5.0D : 15.0D;
+                }
+                if (count == 2) {
+                    yield high ? 40.0D : 55.0D;
+                }
+                if (count == 3) {
+                    yield high ? 55.0D : 30.0D;
+                }
+                yield 0.0D;
+            }
+            default -> 0.0D;
+        };
     }
 
     private Map<String, Object> loadCandidateModifierNodes(ItemSpec resultSpec, String configuredPool) {
@@ -355,7 +613,7 @@ public final class ForjadorModifierService {
         };
     }
 
-    private ItemStack buildMmoItemWithModifier(ItemSpec spec, SelectedModifier selected) {
+    private ItemStack buildMmoItemWithModifiers(ItemSpec spec, List<AppliedModifier> selectedModifiers) {
         try {
             Object pluginInstance = getMmoItemsPlugin();
             if (pluginInstance == null) {
@@ -377,8 +635,10 @@ public final class ForjadorModifierService {
             Constructor<?> constructor = builderClass.getConstructor(templateClass, int.class, tierClass, boolean.class);
             Object builder = constructor.newInstance(template, 0, null, true);
 
-            Method whenCollected = selected.node().getClass().getMethod("whenCollected", builderClass, UUID.class);
-            whenCollected.invoke(selected.node(), builder, UUID.randomUUID());
+            for (AppliedModifier selected : selectedModifiers) {
+                Method whenCollected = selected.node().getClass().getMethod("whenCollected", builderClass, UUID.class);
+                whenCollected.invoke(selected.node(), builder, UUID.randomUUID());
+            }
 
             Object mmoItem = builderClass.getMethod("build").invoke(builder);
             Object stackBuilder = mmoItem.getClass().getMethod("newBuilder").invoke(mmoItem);
@@ -528,7 +788,14 @@ public final class ForjadorModifierService {
         return meta.getPersistentDataContainer().has(modifierAppliedKey, PersistentDataType.BYTE);
     }
 
-    private ItemStack markAsRolled(ItemStack item, String modifierId, ModifierQuality quality, String recipeId, String prefix) {
+    private ItemStack markAsRolled(
+            ItemStack item,
+            String modifierId,
+            ModifierQuality quality,
+            String recipeId,
+            String prefix,
+            SelectedSocketModifier socket
+    ) {
         if (item == null || item.getType().isAir()) {
             return item;
         }
@@ -543,6 +810,13 @@ public final class ForjadorModifierService {
         pdc.set(modifierRecipeKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
         if (prefix != null && !prefix.isBlank()) {
             pdc.set(modifierPrefixKey, PersistentDataType.STRING, prefix);
+        }
+        if (socket != null) {
+            pdc.set(socketGroupKey, PersistentDataType.STRING, socket.groupId());
+            pdc.set(socketModifierIdKey, PersistentDataType.STRING, socket.id());
+            pdc.set(socketCountKey, PersistentDataType.INTEGER, socket.count());
+        } else {
+            pdc.set(socketCountKey, PersistentDataType.INTEGER, 0);
         }
         item.setItemMeta(meta);
         return item;
@@ -596,6 +870,9 @@ public final class ForjadorModifierService {
         String quality = oldPdc.get(modifierQualityKey, PersistentDataType.STRING);
         String recipeId = oldPdc.get(modifierRecipeKey, PersistentDataType.STRING);
         String prefix = oldPdc.get(modifierPrefixKey, PersistentDataType.STRING);
+        String socketGroup = oldPdc.get(socketGroupKey, PersistentDataType.STRING);
+        String socketModifierId = oldPdc.get(socketModifierIdKey, PersistentDataType.STRING);
+        Integer socketCount = oldPdc.get(socketCountKey, PersistentDataType.INTEGER);
 
         if ((prefix == null || prefix.isBlank()) && modifierId != null && !modifierId.isBlank()) {
             prefix = getString("forjador-modifiers.prefix-overrides." + normalize(modifierId), "");
@@ -614,6 +891,15 @@ public final class ForjadorModifierService {
         newPdc.set(modifierRecipeKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
         if (prefix != null && !prefix.isBlank()) {
             newPdc.set(modifierPrefixKey, PersistentDataType.STRING, prefix);
+        }
+        if (socketGroup != null && !socketGroup.isBlank()) {
+            newPdc.set(socketGroupKey, PersistentDataType.STRING, socketGroup);
+        }
+        if (socketModifierId != null && !socketModifierId.isBlank()) {
+            newPdc.set(socketModifierIdKey, PersistentDataType.STRING, socketModifierId);
+        }
+        if (socketCount != null) {
+            newPdc.set(socketCountKey, PersistentDataType.INTEGER, Math.max(0, socketCount));
         }
         restored.setItemMeta(newMeta);
 
@@ -808,6 +1094,12 @@ public final class ForjadorModifierService {
             if (children instanceof List<?> list) {
                 return list;
             }
+            if (children instanceof Collection<?> collection) {
+                return new ArrayList<>(collection);
+            }
+            if (children instanceof Map<?, ?> map) {
+                return new ArrayList<>(map.values());
+            }
             return Collections.emptyList();
         } catch (Throwable exception) {
             return Collections.emptyList();
@@ -859,5 +1151,21 @@ public final class ForjadorModifierService {
     }
 
     private record SelectedModifier(String id, ModifierQuality quality, Object node) {
+    }
+
+    private record AppliedModifier(String id, Object node) {
+    }
+
+    private record SocketGroup(String id, String family, int tier, Object node) {
+    }
+
+    private record SelectedSocketModifier(
+            String id,
+            Object node,
+            String groupId,
+            String family,
+            int tier,
+            int count
+    ) {
     }
 }

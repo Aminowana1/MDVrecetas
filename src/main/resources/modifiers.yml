@@ -146,3 +146,74 @@ forjador-modifiers:
     blocked:
       - reliquia
       - simbionte
+
+# ==========================================================
+# Ranuras de gemas por nivel de Forjador
+#
+# Tirada independiente de la calidad.
+# MDVRecetas detecta el grupo directamente en la plantilla
+# del MMOItem usando este formato:
+#
+# mdv_sockets_fisica_t2
+# mdv_sockets_distancia_t3
+# mdv_sockets_arcana_t4
+# mdv_sockets_soporte_t5
+#
+# El nivel 1 usa las mismas probabilidades base que los drops
+# normales de MMOItems/MythicMobs. El nivel 50 mejora la tirada.
+# Entre ambos niveles se interpola linealmente.
+#
+# La clave 0 representa "sin ranuras".
+# ==========================================================
+forjador-sockets:
+  enabled: true
+
+  chances:
+    t2:
+      level-1:
+        '0': 65
+        '1': 35
+        '2': 0
+        '3': 0
+      level-50:
+        '0': 35
+        '1': 65
+        '2': 0
+        '3': 0
+
+    t3:
+      level-1:
+        '0': 25
+        '1': 60
+        '2': 15
+        '3': 0
+      level-50:
+        '0': 5
+        '1': 55
+        '2': 40
+        '3': 0
+
+    t4:
+      level-1:
+        '0': 0
+        '1': 50
+        '2': 45
+        '3': 5
+      level-50:
+        '0': 0
+        '1': 20
+        '2': 55
+        '3': 25
+
+    t5:
+      level-1:
+        '0': 0
+        '1': 15
+        '2': 55
+        '3': 30
+      level-50:
+        '0': 0
+        '1': 5
+        '2': 40
+        '3': 55
+

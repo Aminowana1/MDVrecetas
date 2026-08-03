@@ -53,7 +53,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.14 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.15 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
@@ -319,6 +319,62 @@ forjador-modifiers:
     blocked:
       - reliquia
       - simbionte
+
+
+# ==========================================================
+# Ranuras de gemas por nivel de Forjador
+# ==========================================================
+forjador-sockets:
+  enabled: true
+
+  chances:
+    t2:
+      level-1:
+        '0': 65
+        '1': 35
+        '2': 0
+        '3': 0
+      level-50:
+        '0': 35
+        '1': 65
+        '2': 0
+        '3': 0
+
+    t3:
+      level-1:
+        '0': 25
+        '1': 60
+        '2': 15
+        '3': 0
+      level-50:
+        '0': 5
+        '1': 55
+        '2': 40
+        '3': 0
+
+    t4:
+      level-1:
+        '0': 0
+        '1': 50
+        '2': 45
+        '3': 5
+      level-50:
+        '0': 0
+        '1': 20
+        '2': 55
+        '3': 25
+
+    t5:
+      level-1:
+        '0': 0
+        '1': 15
+        '2': 55
+        '3': 30
+      level-50:
+        '0': 0
+        '1': 5
+        '2': 40
+        '3': 55
 
 """;
 
