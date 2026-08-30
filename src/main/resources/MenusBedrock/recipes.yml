@@ -1,13 +1,20 @@
 # ==========================================================
-# MDVRecetas 0.6.17 - Visualizador de recetas para Bedrock
+# MDVRecetas 0.6.19 - Visualizador híbrido de recetas para Bedrock
 #
 # Solo se usa con jugadores Floodgate/Bedrock.
 # Los jugadores Java conservan el GUI de inventario original.
 #
-# El buscador Bedrock tiene dos modos:
+# Buscador Bedrock:
 # - por texto: nombre/ID de resultado, receta o ingrediente;
-# - por objeto en mano: equivalente al buscador de ingrediente
-#   del GUI Java, sin retirar ni mover el objeto del inventario.
+# - por inventario: eliges un objeto de tu inventario y se muestran
+#   las recetas que lo utilizan. No depende del objeto de la mano.
+#
+# Al tocar una receta desde un Form se abre un inventario pequeño
+# de 27 slots. Los 9 slots de la izquierda representan exactamente
+# la mesa 3x3; a la derecha se muestran estación -> resultado.
+#
+# El bloque recipe.layout se conserva como fallback si desactivas
+# recipe.hybrid-inventory.enabled.
 # ==========================================================
 
 type: "DYNAMIC_MDVRECETAS_GUIDE"
@@ -16,6 +23,7 @@ settings:
   # Recomendado para celular/consola para no crear Forms enormes.
   category-page-size: 8
   search-page-size: 8
+  inventory-page-size: 8
 
 main:
   title: "&8&lGuía de Recetas"
@@ -25,14 +33,13 @@ main:
     - ""
     - "&7Recetas visibles: &e{total}"
 
-  # Si está en false, no muestra categorías sin recetas visibles.
   show-empty-categories: true
 
   # Tokens: {category}, {category_colored}, {count}
   category-button: "&e&l{category_colored}\n&r&7Recetas: &f{count}"
 
   search:
-    text: "&b&lBuscar recetas\n&r&7Por nombre o por objeto en mano."
+    text: "&b&lBuscar recetas\n&r&7Por nombre o por un objeto de tu inventario."
 
   back:
     text: "&6&lVolver"
@@ -58,26 +65,42 @@ category:
     text: "&6&lVolver a categorías"
 
 search:
-  none: "Nada"
-
   menu:
     title: "&8&lBuscador de Recetas"
     content:
-      - "&7Busca recetas por nombre o usa"
-      - "&7exactamente el objeto que sostienes."
+      - "&7Busca escribiendo un nombre o selecciona"
+      - "&7un objeto que ya tengas en tu inventario."
       - ""
-      - "&7Objeto en mano: &e{hand}"
+      - "&7Objetos detectados: &e{inventory_items}"
 
     text-search:
       text: "&b&lBuscar por nombre\n&r&7Objeto, ingrediente o receta."
 
-    # Este modo replica la función del GUI Java donde colocas
-    # un objeto en el centro. En Bedrock basta sostenerlo.
-    hand-search:
-      text: "&a&lUsar objeto en mano\n&r&7Ver recetas que utilizan {hand}."
+    inventory-search:
+      text: "&a&lElegir objeto del inventario\n&r&7Busca recetas que utilicen uno de tus objetos."
 
     back:
       text: "&6&lVolver"
+
+  # Selector que reemplaza al antiguo modo "objeto en mano".
+  # exclude-main-hand: true evita que el Libro del Aventurero usado
+  # para abrir el menú aparezca como opción de búsqueda.
+  inventory:
+    exclude-main-hand: true
+    title: "&8&lElige un objeto"
+    content:
+      - "&7Selecciona un objeto de tu inventario."
+      - "&7Verás las recetas que lo utilizan como ingrediente."
+      - ""
+      - "&7Página: &f{page}/{pages}"
+    empty: "&7No tienes otros objetos disponibles para buscar."
+    item-button: "&e&l{item}\n&r&7En inventario: &f{amount}"
+    previous:
+      text: "&e&lAnterior"
+    next:
+      text: "&e&lSiguiente"
+    back:
+      text: "&6&lVolver al buscador"
 
   input:
     title: "&8&lBuscar Receta"
@@ -103,13 +126,118 @@ search:
     back:
       text: "&6&lVolver a categorías"
 
-  error:
-    title: "&8&lBuscador"
-    back:
-      text: "&6Volver"
-
 recipe:
   title: "&8&l{result}"
+
+  # ----------------------------------------------------------
+  # VISOR HÍBRIDO BEDROCK
+  # ----------------------------------------------------------
+  # Forms para navegar/buscar + inventario real para visualizar
+  # físicamente la receta. El inventario es solo lectura.
+  hybrid-inventory:
+    enabled: true
+
+    # 27 = cofre de 3 filas. Es el tamaño recomendado:
+    # permite una cuadrícula 3x3 completa + estación + resultado.
+    size: 27
+    title: "&8&lVista de Receta"
+
+    # Fondo fuera de la cuadrícula.
+    background:
+      material: BLACK_STAINED_GLASS_PANE
+      name: " "
+
+    # Cuadrícula real 3x3:
+    #
+    # [ 0][ 1][ 2] [ ][ ][ ][ ][ ][ ]
+    # [ 9][10][11] [ ][13][14][15][ ][ ]
+    # [18][19][20] [ ][22][ ][24][ ][26]
+    #
+    # En recetas SHAPED respeta exactamente la forma del YAML.
+    # En SHAPELESS coloca los ingredientes consecutivamente.
+    grid:
+      slots:
+        - 0
+        - 1
+        - 2
+        - 9
+        - 10
+        - 11
+        - 18
+        - 19
+        - 20
+
+      # AIR deja las casillas vacías y hace más clara la forma.
+      empty-material: AIR
+      empty-name: " "
+
+    ingredient:
+      # Si el ingrediente también se fabrica en MDVRecetas,
+      # tocarlo abre directamente su receta.
+      linked-click: true
+      lore:
+        - ""
+        - "&8Ingrediente &7• &e{amount}x"
+      linked-lore:
+        - "&bToca para ver cómo se fabrica."
+
+    invalid-ingredient:
+      name: "&cIngrediente inválido"
+      lore:
+        - "&7Revisa el YAML de esta receta."
+
+    station:
+      slot: 13
+      name: "&6&l{station}"
+      lore:
+        - "&7Estación: &e{station}"
+        - "&7Tipo: &f{type}"
+        - "&7Variante: &f{variant}/{variants}"
+      forjador-line: "&7Forjador: &e+{forjador_exp} EXP"
+      cooking-time-line: "&7Tiempo: &e{cooking_time} ticks"
+      vanilla-exp-line: "&7EXP vanilla: &e{vanilla_exp}"
+
+    arrow:
+      slot: 14
+      material: SPECTRAL_ARROW
+      name: "&e&l→ Resultado"
+      lore:
+        - "&7La receta produce el objeto"
+        - "&7que aparece a la derecha."
+
+    result:
+      slot: 15
+      lore:
+        - ""
+        - "&a&lResultado"
+        - "&7Cantidad: &e{result_amount}"
+        - "&7Categoría: &f{category}"
+        - "&7Tipo: &f{type}"
+
+    # Para horno/alto horno/ahumador/hoguera.
+    cooking:
+      ingredient-slot: 10
+
+    previous-variant:
+      slot: 22
+      material: ARROW
+      name: "&e&lVariante anterior"
+      lore:
+        - "&7Variante &e{variant}&7/&e{variants}"
+
+    next-variant:
+      slot: 24
+      material: ARROW
+      name: "&e&lSiguiente variante"
+      lore:
+        - "&7Variante &e{variant}&7/&e{variants}"
+
+    back:
+      slot: 26
+      material: BARRIER
+      name: "&6&lVolver"
+      lore:
+        - "&7Regresa al menú anterior."
 
   # Tokens disponibles:
   # {id}, {result}, {result_amount}, {category}, {category_colored},
@@ -117,7 +245,9 @@ recipe:
   # {cooking_time}, {vanilla_exp}
   #
   # Marcadores especiales de línea completa:
-  # {ingredients} -> inserta la lista dinámica de ingredientes.
+  # {layout}      -> distribución 3x3 si es SHAPED, explicación si
+  #                  es SHAPELESS, o entrada -> salida si es COOKING.
+  # {ingredients} -> lista dinámica de ingredientes.
   # {extra}       -> EXP Forjador / tiempo de cocción cuando corresponda.
   content:
     - "&e&l● &7&lResultado"
@@ -129,9 +259,29 @@ recipe:
     - "&7Tipo: &f{type}"
     - "&7Variante: &f{variant}/{variants}"
     - ""
+    - "{layout}"
     - "&e&l● &7&lIngredientes"
     - "{ingredients}"
     - "{extra}"
+
+  # Vista exacta de recetas con forma.
+  # Ejemplo:
+  # [A] [B] [A]
+  # [ ] [B] [ ]
+  # [ ] [C] [ ]
+  # A = Piedra Lunar, B = Lingote, C = Palo
+  layout:
+    enabled: true
+    shaped-title: "&e&l● &7&lForma en la mesa 3x3"
+    shaped-row: "&8[&e{c1}&8] [&e{c2}&8] [&e{c3}&8]"
+    legend-title: "&8Leyenda:"
+    legend-line: "&e{symbol} &8= &f{amount}x &7{ingredient}"
+
+    shapeless-title: "&e&l● &7&lColocación"
+    shapeless-line: "&7Sin forma: coloca los ingredientes en cualquier orden."
+
+    cooking-title: "&e&l● &7&lProceso"
+    cooking-line: "&f{ingredient_amount}x {ingredient} &8→ &e{result_amount}x {result}"
 
   ingredient-line: "&7• &f{amount}x &e{ingredient}"
   no-ingredients: "&8Sin ingredientes visibles."
@@ -144,8 +294,6 @@ recipe:
   next-variant:
     text: "&e&lSiguiente variante\n&r&7{variant}/{variants}"
 
-  # Igual que en Java: si un ingrediente tiene una receta visible,
-  # puede abrirse directamente desde la vista de receta.
   linked-ingredients:
     enabled: true
     max-buttons: 6
@@ -153,6 +301,3 @@ recipe:
 
   back:
     text: "&6&lVolver"
-
-messages:
-  empty-hand: "&cDebes sostener un objeto en la mano principal."
