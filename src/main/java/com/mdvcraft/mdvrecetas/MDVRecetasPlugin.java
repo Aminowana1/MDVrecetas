@@ -2,6 +2,7 @@ package com.mdvcraft.mdvrecetas;
 
 import com.mdvcraft.mdvrecetas.command.MDVRecetasCommand;
 import com.mdvcraft.mdvrecetas.gui.RecipeGuiManager;
+import com.mdvcraft.mdvrecetas.gui.BedrockRecipeMenuManager;
 import com.mdvcraft.mdvrecetas.editor.EditorGuiManager;
 import com.mdvcraft.mdvrecetas.hook.MDVSocialHook;
 import com.mdvcraft.mdvrecetas.hook.MMOItemsHook;
@@ -32,6 +33,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
     private ForjadorModifierService forjadorModifierService;
     private MMOItemsGemCompatibilityService mmoItemsGemCompatibilityService;
     private RecipeGuiManager recipeGuiManager;
+    private BedrockRecipeMenuManager bedrockRecipeMenuManager;
     private EditorGuiManager editorGuiManager;
     private MDVSocialHook mdvSocialHook;
     private com.mdvcraft.mdvrecetas.placeholder.MDVRecetasPlaceholderExpansion placeholderExpansion;
@@ -52,10 +54,13 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.forjadorModifierService = new ForjadorModifierService(this);
         this.recipeManager = new MdvRecipeManager(this, itemResolver);
         this.recipeGuiManager = new RecipeGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
+        if (getServer().getPluginManager().isPluginEnabled("floodgate")) {
+            this.bedrockRecipeMenuManager = new BedrockRecipeMenuManager(this, recipeManager, itemResolver, mdvSocialHook);
+        }
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.16 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.17 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
@@ -81,6 +86,9 @@ public final class MDVRecetasPlugin extends JavaPlugin {
     public void onDisable() {
         if (recipeGuiManager != null) {
             recipeGuiManager.closeAllAndReturnSearchItems();
+        }
+        if (bedrockRecipeMenuManager != null) {
+            bedrockRecipeMenuManager.shutdown();
         }
         if (editorGuiManager != null) {
             editorGuiManager.closeAllAndReturnEditorItems();
@@ -139,6 +147,10 @@ public final class MDVRecetasPlugin extends JavaPlugin {
 
     public RecipeGuiManager getRecipeGuiManager() {
         return recipeGuiManager;
+    }
+
+    public BedrockRecipeMenuManager getBedrockRecipeMenuManager() {
+        return bedrockRecipeMenuManager;
     }
 
     public EditorGuiManager getEditorGuiManager() {

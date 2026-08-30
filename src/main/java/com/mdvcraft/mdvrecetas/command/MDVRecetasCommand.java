@@ -57,6 +57,9 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
             message(sender, "messages.player-only");
             return;
         }
+        if (plugin.getBedrockRecipeMenuManager() != null && plugin.getBedrockRecipeMenuManager().openMain(player)) {
+            return;
+        }
         plugin.getRecipeGuiManager().openMain(player);
     }
 
@@ -70,6 +73,9 @@ public final class MDVRecetasCommand implements CommandExecutor, TabCompleter {
             plugin.reloadConfig();
             plugin.getForjadorModifierService().reload();
             int count = plugin.getRecipeManager().reloadRecipes();
+            if (plugin.getBedrockRecipeMenuManager() != null) {
+                plugin.getBedrockRecipeMenuManager().reload();
+            }
             String msg = plugin.getConfig().getString("messages.reload-done", "&aRecetas recargadas: %count%")
                     .replace("%count%", String.valueOf(count));
             sender.sendMessage(prefix() + ColorUtil.color(msg));

@@ -1,5 +1,5 @@
 name: MDVRecetas
-version: 0.6.16
+version: 0.6.17
 main: com.mdvcraft.mdvrecetas.MDVRecetasPlugin
 api-version: '1.21'
 author: MDVCRAFT
@@ -10,6 +10,7 @@ depend:
 softdepend:
   - MDVSocial
   - PlaceholderAPI
+  - floodgate
 commands:
   mdvrecetas:
     description: Comando principal de MDVRecetas.

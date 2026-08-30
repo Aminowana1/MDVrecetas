@@ -1,0 +1,158 @@
+# ==========================================================
+# MDVRecetas 0.6.17 - Visualizador de recetas para Bedrock
+#
+# Solo se usa con jugadores Floodgate/Bedrock.
+# Los jugadores Java conservan el GUI de inventario original.
+#
+# El buscador Bedrock tiene dos modos:
+# - por texto: nombre/ID de resultado, receta o ingrediente;
+# - por objeto en mano: equivalente al buscador de ingrediente
+#   del GUI Java, sin retirar ni mover el objeto del inventario.
+# ==========================================================
+
+type: "DYNAMIC_MDVRECETAS_GUIDE"
+
+settings:
+  # Recomendado para celular/consola para no crear Forms enormes.
+  category-page-size: 8
+  search-page-size: 8
+
+main:
+  title: "&8&lGuía de Recetas"
+  content:
+    - "&7Explora las recetas por categoría"
+    - "&7o usa el buscador de ingredientes."
+    - ""
+    - "&7Recetas visibles: &e{total}"
+
+  # Si está en false, no muestra categorías sin recetas visibles.
+  show-empty-categories: true
+
+  # Tokens: {category}, {category_colored}, {count}
+  category-button: "&e&l{category_colored}\n&r&7Recetas: &f{count}"
+
+  search:
+    text: "&b&lBuscar recetas\n&r&7Por nombre o por objeto en mano."
+
+  back:
+    text: "&6&lVolver"
+
+  # Vacío = usa gui.main-back-command de config.yml.
+  back-command: ""
+
+category:
+  title: "&8&l{category_colored}"
+  content:
+    - "&7Recetas: &f{total}"
+    - "&7Página: &f{page}/{pages}"
+  empty: "&7No hay recetas visibles en esta categoría."
+
+  # Tokens: {result}, {result_amount}, {station}, {type}, {category}
+  recipe-button: "&e&l{result}\n&r&7{station} &8• &7{type}"
+
+  previous:
+    text: "&e&lAnterior"
+  next:
+    text: "&e&lSiguiente"
+  back:
+    text: "&6&lVolver a categorías"
+
+search:
+  none: "Nada"
+
+  menu:
+    title: "&8&lBuscador de Recetas"
+    content:
+      - "&7Busca recetas por nombre o usa"
+      - "&7exactamente el objeto que sostienes."
+      - ""
+      - "&7Objeto en mano: &e{hand}"
+
+    text-search:
+      text: "&b&lBuscar por nombre\n&r&7Objeto, ingrediente o receta."
+
+    # Este modo replica la función del GUI Java donde colocas
+    # un objeto en el centro. En Bedrock basta sostenerlo.
+    hand-search:
+      text: "&a&lUsar objeto en mano\n&r&7Ver recetas que utilizan {hand}."
+
+    back:
+      text: "&6&lVolver"
+
+  input:
+    title: "&8&lBuscar Receta"
+    label: "&eNombre del objeto, ingrediente o receta"
+    placeholder: "Ej: Espada Lunar, Nimbrel, hierro..."
+
+  results:
+    title: "&8&lResultados"
+    content:
+      - "&7Búsqueda: &e{query}"
+      - "&7Resultados: &f{total}"
+      - "&7Página: &f{page}/{pages}"
+    empty: "&7No encontré recetas visibles con esa búsqueda."
+
+    recipe-button: "&e&l{result}\n&r&7{category} &8• &7{station}"
+
+    previous:
+      text: "&e&lAnterior"
+    next:
+      text: "&e&lSiguiente"
+    new-search:
+      text: "&b&lNueva búsqueda"
+    back:
+      text: "&6&lVolver a categorías"
+
+  error:
+    title: "&8&lBuscador"
+    back:
+      text: "&6Volver"
+
+recipe:
+  title: "&8&l{result}"
+
+  # Tokens disponibles:
+  # {id}, {result}, {result_amount}, {category}, {category_colored},
+  # {station}, {type}, {variant}, {variants}, {forjador_exp},
+  # {cooking_time}, {vanilla_exp}
+  #
+  # Marcadores especiales de línea completa:
+  # {ingredients} -> inserta la lista dinámica de ingredientes.
+  # {extra}       -> EXP Forjador / tiempo de cocción cuando corresponda.
+  content:
+    - "&e&l● &7&lResultado"
+    - "&f{result} &7x{result_amount}"
+    - ""
+    - "&e&l● &7&lFabricación"
+    - "&7Estación: &e{station}"
+    - "&7Categoría: &f{category}"
+    - "&7Tipo: &f{type}"
+    - "&7Variante: &f{variant}/{variants}"
+    - ""
+    - "&e&l● &7&lIngredientes"
+    - "{ingredients}"
+    - "{extra}"
+
+  ingredient-line: "&7• &f{amount}x &e{ingredient}"
+  no-ingredients: "&8Sin ingredientes visibles."
+  forjador-line: "&7EXP de Forjador: &e+{forjador_exp}"
+  cooking-time-line: "&7Tiempo: &e{cooking_time} ticks"
+  vanilla-exp-line: "&7EXP vanilla: &e{vanilla_exp}"
+
+  previous-variant:
+    text: "&e&lVariante anterior\n&r&7{variant}/{variants}"
+  next-variant:
+    text: "&e&lSiguiente variante\n&r&7{variant}/{variants}"
+
+  # Igual que en Java: si un ingrediente tiene una receta visible,
+  # puede abrirse directamente desde la vista de receta.
+  linked-ingredients:
+    enabled: true
+    max-buttons: 6
+    button: "&b&lVer receta de {ingredient}\n&r&7Resultado: {result}"
+
+  back:
+    text: "&6&lVolver"
+
+messages:
+  empty-hand: "&cDebes sostener un objeto en la mano principal."
