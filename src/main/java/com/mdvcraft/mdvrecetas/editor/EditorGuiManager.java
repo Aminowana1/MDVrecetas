@@ -697,7 +697,7 @@ public final class EditorGuiManager implements Listener {
             return;
         }
         boolean deleted = recipeManager.deleteRecipeFromFiles(id);
-        int count = recipeManager.reloadRecipes();
+        int count = deleted ? recipeManager.removeLoadedRecipe(id) : recipeManager.getRecipes().size();
         sessions.remove(player.getUniqueId());
         player.closeInventory();
         if (deleted) {
@@ -866,7 +866,8 @@ public final class EditorGuiManager implements Listener {
                 }
             }
 
-            int count = recipeManager.reloadRecipes();
+            String previousId = session.isEditing() ? session.getEditingRecipeId() : null;
+            int count = recipeManager.synchronizeSavedRecipe(previousId, id, file);
             player.sendMessage(prefix() + color("&aReceta guardada como &e" + id + " &aen &f" + session.getTargetRecipeFile() + "&a. Recetas cargadas: &e" + count + "&a."));
             if (!session.isEditing()) {
                 returnEditorItems(player, inv);

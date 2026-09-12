@@ -11,7 +11,6 @@ import org.bukkit.Keyed;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.*;
 
@@ -22,7 +21,7 @@ import java.util.logging.Level;
 public final class MdvRecipeManager {
     private final MDVRecetasPlugin plugin;
     private final ItemResolver itemResolver;
-    private final RecipeParser parser;
+    private final RecipeReloadService reloadService;
     private final Map<NamespacedKey, MdvRecipe> recipesByKey = new LinkedHashMap<>();
     private final Map<String, String> sourceFileByRecipeId = new HashMap<>();
     private final Set<NamespacedKey> registeredKeys = new HashSet<>();
@@ -30,27 +29,31 @@ public final class MdvRecipeManager {
     public MdvRecipeManager(MDVRecetasPlugin plugin, ItemResolver itemResolver) {
         this.plugin = plugin;
         this.itemResolver = itemResolver;
-        this.parser = new RecipeParser(plugin, itemResolver);
+        RecipeParser parser = new RecipeParser(plugin, itemResolver);
+        this.reloadService = new RecipeReloadService(plugin, this, parser);
     }
 
+    /**
+     * Incremental reload: unchanged recipes stay registered in Bukkit.
+     * Only new, modified or removed recipes touch the live recipe registry.
+     */
     public int reloadRecipes() {
-        unregisterOwnRecipes();
-        recipesByKey.clear();
-        sourceFileByRecipeId.clear();
-        registeredKeys.clear();
+        return reloadService.reloadIncrementally();
+    }
 
-        File folder = new File(plugin.getDataFolder(), plugin.getConfig().getString("settings.recipe-folder", "recipes"));
-        if (!folder.exists() && !folder.mkdirs()) {
-            plugin.getLogger().warning("Could not create recipes folder: " + folder.getAbsolutePath());
-        }
+    /**
+     * Used by the editor after an atomic YAML save. Only the recipe that was
+     * created/edited is synchronized; unrelated recipes are left untouched.
+     */
+    public int synchronizeSavedRecipe(String previousId, String currentId, File sourceFile) {
+        return reloadService.synchronizeSavedRecipe(previousId, currentId, sourceFile);
+    }
 
-        List<File> files = listYamlFiles(folder);
-        int loaded = 0;
-        for (File file : files) {
-            loaded += loadFile(file);
-        }
-        plugin.getLogger().info("Registered " + loaded + " MDVRecetas recipes.");
-        return loaded;
+    /**
+     * Used by the editor after deleting a recipe from disk.
+     */
+    public int removeLoadedRecipe(String id) {
+        return reloadService.removeById(id);
     }
 
 
@@ -509,6 +512,72 @@ public final class MdvRecipeManager {
         return Optional.empty();
     }
 
+    NamespacedKey findRuntimeKeyById(String id) {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        for (Map.Entry<NamespacedKey, MdvRecipe> entry : recipesByKey.entrySet()) {
+            if (entry.getValue().getId().equalsIgnoreCase(id)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    void updateRuntimeSource(String recipeId, String sourceFile) {
+        if (recipeId == null || recipeId.isBlank()) {
+            return;
+        }
+        sourceFileByRecipeId.put(recipeId.toLowerCase(Locale.ROOT), sourceFile);
+    }
+
+    void addRuntimeRecipe(MdvRecipe recipe, String sourceFile) {
+        register(recipe);
+        updateRuntimeSource(recipe.getId(), sourceFile);
+    }
+
+    void replaceRuntimeRecipe(MdvRecipe recipe, String sourceFile) {
+        NamespacedKey key = recipe.getKey();
+        MdvRecipe previous = recipesByKey.get(key);
+        String previousSource = previous == null ? null
+                : sourceFileByRecipeId.get(previous.getId().toLowerCase(Locale.ROOT));
+
+        if (previous != null) {
+            removeRuntimeRecipeByKey(key);
+        }
+
+        try {
+            addRuntimeRecipe(recipe, sourceFile);
+        } catch (RuntimeException exception) {
+            // Preserve the previously working recipe if the replacement is
+            // unexpectedly rejected by Bukkit. This path is exceptional and
+            // may cost one additional addRecipe, but avoids leaving a hole.
+            if (previous != null) {
+                try {
+                    addRuntimeRecipe(previous, previousSource);
+                } catch (RuntimeException rollbackException) {
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not restore previous recipe '" + previous.getId() + "' after failed update.",
+                            rollbackException);
+                }
+            }
+            throw exception;
+        }
+    }
+
+    boolean removeRuntimeRecipeByKey(NamespacedKey key) {
+        if (key == null) {
+            return false;
+        }
+        boolean removedFromBukkit = Bukkit.removeRecipe(key);
+        registeredKeys.remove(key);
+        MdvRecipe removed = recipesByKey.remove(key);
+        if (removed != null) {
+            sourceFileByRecipeId.remove(removed.getId().toLowerCase(Locale.ROOT));
+        }
+        return removedFromBukkit || removed != null;
+    }
+
     public void unregisterOwnRecipes() {
         Iterator<Recipe> iterator = Bukkit.recipeIterator();
         while (iterator.hasNext()) {
@@ -521,31 +590,7 @@ public final class MdvRecipeManager {
             Bukkit.removeRecipe(key);
         }
         registeredKeys.clear();
-    }
-
-    private int loadFile(File file) {
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
-        ConfigurationSection recipesSection = yaml.getConfigurationSection("recipes");
-        if (recipesSection == null) {
-            return 0;
-        }
-
-        int loaded = 0;
-        for (String id : recipesSection.getKeys(false)) {
-            ConfigurationSection section = recipesSection.getConfigurationSection(id);
-            if (section == null || !section.getBoolean("enabled", true)) {
-                continue;
-            }
-            try {
-                MdvRecipe recipe = parser.parse(id, section);
-                register(recipe);
-                sourceFileByRecipeId.put(id.toLowerCase(Locale.ROOT), relativeRecipePath(file));
-                loaded++;
-            } catch (Exception exception) {
-                plugin.getLogger().log(Level.WARNING, "Could not load recipe '" + id + "' from " + file.getName() + ": " + exception.getMessage(), exception);
-            }
-        }
-        return loaded;
+        reloadService.clearSnapshots();
     }
 
     private void register(MdvRecipe recipe) {

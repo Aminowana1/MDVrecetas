@@ -1,5 +1,5 @@
 name: MDVRecetas
-version: 0.6.19
+version: 0.6.20
 main: com.mdvcraft.mdvrecetas.MDVRecetasPlugin
 api-version: '1.21'
 author: MDVCRAFT
