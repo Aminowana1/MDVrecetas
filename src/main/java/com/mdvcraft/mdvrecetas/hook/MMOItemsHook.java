@@ -10,9 +10,19 @@ import java.util.Optional;
 
 public final class MMOItemsHook {
     private final boolean pluginPresent;
+    private record IdentityReader(Method get, Method hasType, Method getType, Method getString) {}
+    private final java.util.List<IdentityReader> identityReaders = new java.util.ArrayList<>();
 
     public MMOItemsHook() {
         this.pluginPresent = Bukkit.getPluginManager().isPluginEnabled("MMOItems");
+        if (pluginPresent) for (String name : new String[]{"net.Indyuce.mmoitems.api.item.NBTItem",
+                "io.lumine.mythic.lib.api.item.NBTItem", "net.Indyuce.mmoitems.api.item.nbt.NBTItem"}) {
+            try {
+                Class<?> type = Class.forName(name);
+                identityReaders.add(new IdentityReader(type.getMethod("get", ItemStack.class),
+                        type.getMethod("hasType"), type.getMethod("getType"), type.getMethod("getString", String.class)));
+            } catch (ReflectiveOperationException ignored) { }
+        }
     }
 
     public boolean isPluginPresent() {
@@ -59,12 +69,8 @@ public final class MMOItemsHook {
             return Optional.empty();
         }
 
-        for (String className : new String[]{
-                "net.Indyuce.mmoitems.api.item.NBTItem",
-                "io.lumine.mythic.lib.api.item.NBTItem",
-                "net.Indyuce.mmoitems.api.item.nbt.NBTItem"
-        }) {
-            Optional<MmoIdentity> identity = tryReadIdentity(className, itemStack);
+        for (IdentityReader reader : identityReaders) {
+            Optional<MmoIdentity> identity = tryReadIdentity(reader, itemStack);
             if (identity.isPresent()) {
                 return identity;
             }
@@ -72,30 +78,25 @@ public final class MMOItemsHook {
         return Optional.empty();
     }
 
-    private Optional<MmoIdentity> tryReadIdentity(String className, ItemStack itemStack) {
+    private Optional<MmoIdentity> tryReadIdentity(IdentityReader reader, ItemStack itemStack) {
         try {
-            Class<?> nbtItemClass = Class.forName(className);
-            Method get = nbtItemClass.getMethod("get", ItemStack.class);
-            Object nbtItem = get.invoke(null, itemStack);
+            Object nbtItem = reader.get().invoke(null, itemStack);
             if (nbtItem == null) {
                 return Optional.empty();
             }
 
-            Method hasType = nbtItemClass.getMethod("hasType");
-            Object hasTypeResult = hasType.invoke(nbtItem);
+            Object hasTypeResult = reader.hasType().invoke(nbtItem);
             if (!(hasTypeResult instanceof Boolean) || !((Boolean) hasTypeResult)) {
                 return Optional.empty();
             }
 
-            Method getType = nbtItemClass.getMethod("getType");
-            Object typeObject = getType.invoke(nbtItem);
+            Object typeObject = reader.getType().invoke(nbtItem);
             String type = normalizeType(typeObject);
             if (type == null || type.isBlank()) {
                 return Optional.empty();
             }
 
-            Method getString = nbtItemClass.getMethod("getString", String.class);
-            Object idObject = getString.invoke(nbtItem, "MMOITEMS_ITEM_ID");
+            Object idObject = reader.getString().invoke(nbtItem, "MMOITEMS_ITEM_ID");
             String id = idObject == null ? null : String.valueOf(idObject);
             if (id == null || id.isBlank()) {
                 return Optional.empty();
@@ -169,6 +170,7 @@ public final class MMOItemsHook {
         if (typeObject == null) {
             return null;
         }
+        if (typeObject instanceof String value) return value;
         try {
             Method getId = typeObject.getClass().getMethod("getId");
             Object id = getId.invoke(typeObject);

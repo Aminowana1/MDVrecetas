@@ -43,6 +43,8 @@ public final class RecipeCraftListener implements Listener {
         }
         var match = plugin.getRecipeManager().findMatchingCraftingRecipe(event.getInventory().getMatrix());
         if (match.isPresent()) {
+            // Vanilla shift-click can consume successive prepared results without
+            // a separate CraftItemEvent for each one. Keep these results fresh.
             ItemStack result = plugin.getItemResolver().buildItem(match.get().getResult());
             event.getInventory().setResult(result == null ? null : result.clone());
             return;
@@ -98,8 +100,7 @@ public final class RecipeCraftListener implements Listener {
             if (eventResult == null || eventResult.getType().isAir()) {
                 eventResult = plugin.getItemResolver().buildItem(mdvRecipe.getResult());
             }
-            ItemStack configuredResult = plugin.getItemResolver().buildItem(mdvRecipe.getResult());
-            int unitAmount = Math.max(1, configuredResult == null ? 1 : configuredResult.getAmount());
+            int unitAmount = mdvRecipe.getResult().getAmount();
             int produced = unitAmount * Math.max(1, crafts);
             plugin.getServer().getPluginManager().callEvent(new MDVRecipeCraftEvent(
                     player, mdvRecipe.getId(), mdvRecipe.getCategory(), mdvRecipe.getStation(),

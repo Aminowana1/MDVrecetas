@@ -22,6 +22,7 @@ public final class MdvRecipeManager {
     private final MDVRecetasPlugin plugin;
     private final ItemResolver itemResolver;
     private final RecipeReloadService reloadService;
+    private CraftingMatcher craftingMatcher;
     private final Map<NamespacedKey, MdvRecipe> recipesByKey = new LinkedHashMap<>();
     private final Map<String, String> sourceFileByRecipeId = new HashMap<>();
     private final Set<NamespacedKey> registeredKeys = new HashSet<>();
@@ -38,6 +39,7 @@ public final class MdvRecipeManager {
      * Only new, modified or removed recipes touch the live recipe registry.
      */
     public int reloadRecipes() {
+        itemResolver.clearCaches();
         return reloadService.reloadIncrementally();
     }
 
@@ -46,6 +48,7 @@ public final class MdvRecipeManager {
      * created/edited is synchronized; unrelated recipes are left untouched.
      */
     public int synchronizeSavedRecipe(String previousId, String currentId, File sourceFile) {
+        itemResolver.clearCaches();
         return reloadService.synchronizeSavedRecipe(previousId, currentId, sourceFile);
     }
 
@@ -161,92 +164,8 @@ public final class MdvRecipeManager {
     }
 
     public Optional<MdvRecipe> findMatchingCraftingRecipe(ItemStack[] matrix) {
-        for (MdvRecipe recipe : recipesByKey.values()) {
-            if (recipe.getStation() != StationType.CRAFTING_TABLE || recipe.getType() == RecipeType.COOKING) {
-                continue;
-            }
-            if (matchesCraftingMatrix(recipe, matrix)) {
-                return Optional.of(recipe);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private boolean matchesCraftingMatrix(MdvRecipe recipe, ItemStack[] rawMatrix) {
-        ItemStack[] matrix = normalizeMatrix(rawMatrix);
-        if (recipe.getType() == RecipeType.SHAPED) {
-            for (int row = 0; row < 3; row++) {
-                String line = row < recipe.getShape().size() ? recipe.getShape().get(row) : "";
-                for (int col = 0; col < 3; col++) {
-                    char symbol = col < line.length() ? line.charAt(col) : ' ';
-                    ItemStack actual = matrix[row * 3 + col];
-                    if (symbol == ' ') {
-                        if (actual != null && !actual.getType().isAir()) {
-                            return false;
-                        }
-                        continue;
-                    }
-                    ItemSpec expected = recipe.getShapedIngredients().get(symbol);
-                    if (!itemResolver.matches(actual, expected) || actual.getAmount() < Math.max(1, expected.getAmount())) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
-        List<ItemStack> actualItems = new ArrayList<>();
-        for (ItemStack item : matrix) {
-            if (item != null && !item.getType().isAir()) {
-                actualItems.add(item);
-            }
-        }
-        List<ItemSpec> expectedItems = new ArrayList<>();
-        for (ItemSpec spec : recipe.getShapelessIngredients().values()) {
-            for (int i = 0; i < Math.max(1, spec.getAmount()); i++) {
-                expectedItems.add(spec);
-            }
-        }
-        if (actualItems.size() != expectedItems.size()) {
-            return false;
-        }
-        boolean[] used = new boolean[actualItems.size()];
-        return matchShapeless(expectedItems, actualItems, used, 0);
-    }
-
-    private boolean matchShapeless(List<ItemSpec> expected, List<ItemStack> actual, boolean[] used, int index) {
-        if (index >= expected.size()) {
-            return true;
-        }
-        ItemSpec spec = expected.get(index);
-        for (int i = 0; i < actual.size(); i++) {
-            if (!used[i] && itemResolver.matches(actual.get(i), spec)) {
-                used[i] = true;
-                if (matchShapeless(expected, actual, used, index + 1)) {
-                    return true;
-                }
-                used[i] = false;
-            }
-        }
-        return false;
-    }
-
-    private ItemStack[] normalizeMatrix(ItemStack[] raw) {
-        ItemStack[] result = new ItemStack[9];
-        if (raw == null) {
-            return result;
-        }
-        if (raw.length == 9) {
-            System.arraycopy(raw, 0, result, 0, 9);
-            return result;
-        }
-        if (raw.length == 4) {
-            result[0] = raw[0];
-            result[1] = raw[1];
-            result[3] = raw[2];
-            result[4] = raw[3];
-        }
-        return result;
+        if (craftingMatcher == null) craftingMatcher = new CraftingMatcher(recipesByKey.values(), itemResolver);
+        return craftingMatcher.find(matrix);
     }
 
     public Optional<MdvRecipe> getByKey(NamespacedKey key) {
@@ -572,6 +491,8 @@ public final class MdvRecipeManager {
         boolean removedFromBukkit = Bukkit.removeRecipe(key);
         registeredKeys.remove(key);
         MdvRecipe removed = recipesByKey.remove(key);
+        craftingMatcher = null;
+        itemResolver.clearCaches();
         if (removed != null) {
             sourceFileByRecipeId.remove(removed.getId().toLowerCase(Locale.ROOT));
         }
@@ -590,6 +511,10 @@ public final class MdvRecipeManager {
             Bukkit.removeRecipe(key);
         }
         registeredKeys.clear();
+        recipesByKey.clear();
+        sourceFileByRecipeId.clear();
+        craftingMatcher = null;
+        itemResolver.clearCaches();
         reloadService.clearSnapshots();
     }
 
@@ -614,6 +539,7 @@ public final class MdvRecipeManager {
         }
         registeredKeys.add(recipe.getKey());
         recipesByKey.put(recipe.getKey(), recipe);
+        craftingMatcher = null;
     }
 
     private Recipe buildShapedRecipe(MdvRecipe recipe, ItemStack result) {

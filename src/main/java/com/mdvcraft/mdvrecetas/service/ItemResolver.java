@@ -11,15 +11,66 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.RecipeChoice;
 import org.bukkit.inventory.meta.ItemMeta;
 
-import java.util.Locale;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.BiPredicate;
+import java.util.function.LongSupplier;
 
 public final class ItemResolver {
     private final MMOItemsHook mmoItemsHook;
 
-    public ItemResolver(MMOItemsHook mmoItemsHook) {
-        this.mmoItemsHook = mmoItemsHook;
+    private static final int MAX_REFERENCES = 1024;
+    private static final long REFERENCE_TTL = 60_000_000_000L;
+    private record ReferenceKey(ItemKind kind, Material material, String type, String id, String data) {
+        static ReferenceKey of(ItemSpec spec) {
+            return new ReferenceKey(spec.getKind(), spec.getMaterial(),
+                    spec.getMmoType(), spec.getMmoId(), spec.getData());
+        }
     }
+    private record Reference(ItemStack item, long created) {}
+    private final Map<ReferenceKey, Reference> references = new LinkedHashMap<>(64, .75f, true);
+    private final LongSupplier clock;
+
+    public ItemResolver(MMOItemsHook mmoItemsHook) { this(mmoItemsHook, System::nanoTime); }
+    ItemResolver(MMOItemsHook mmoItemsHook, LongSupplier clock) {
+        this.mmoItemsHook = mmoItemsHook;
+        this.clock = clock;
+    }
+
+    public void clearCaches() { references.clear(); }
+
+    // Main-thread only. Never use these references as the delivered craft result.
+    private ItemStack reference(ItemSpec spec) {
+        ReferenceKey key = ReferenceKey.of(spec);
+        long now = clock.getAsLong();
+        Reference cached = references.get(key);
+        if (cached != null && now - cached.created() < REFERENCE_TTL) return cached.item();
+        ItemStack item = buildItem(spec);
+        if (item != null) item.setAmount(1);
+        references.put(key, new Reference(item, now));
+        while (references.size() > MAX_REFERENCES) references.remove(references.keySet().iterator().next());
+        return item;
+    }
+
+    public ItemStack buildPreview(ItemSpec spec) {
+        if (spec == null) return null;
+        ItemStack item = reference(spec);
+        if (item == null) return null;
+        ItemStack copy = item.clone();
+        copy.setAmount(spec.getAmount());
+        return copy;
+    }
+
+    /** Context lives for one matrix lookup, never retains player inventories. */
+    public BiPredicate<ItemStack, ItemSpec> newMatchContext() {
+        Map<ItemStack, Optional<MMOItemsHook.MmoIdentity>> identities = new IdentityHashMap<>();
+        Map<ItemStack, Map<ItemSpec, Boolean>> comparisons = new IdentityHashMap<>();
+        return (item, spec) -> {
+            if (item == null || spec == null || item.getType().isAir()) return false;
+            return comparisons.computeIfAbsent(item, ignored -> new IdentityHashMap<>()).computeIfAbsent(spec,
+                    ignored -> matches(item, spec, identities));
+        };
+    }
+
 
     public MMOItemsHook getMmoItemsHook() {
         return mmoItemsHook;
@@ -100,14 +151,14 @@ public final class ItemResolver {
         // Registramos solo el material para que la mesa reconozca el patron y luego
         // RecipeCraftListener valida la identidad real antes de mostrar/entregar resultado.
         if (spec.getKind() == ItemKind.MMOITEMS && spec.getMatchMode() == MatchMode.MMO_ID) {
-            ItemStack representative = buildItem(spec);
+            ItemStack representative = buildPreview(spec);
             if (representative == null || representative.getType().isAir()) {
                 return null;
             }
             return new RecipeChoice.MaterialChoice(representative.getType());
         }
 
-        ItemStack exact = buildItem(spec);
+        ItemStack exact = buildPreview(spec);
         if (exact == null || exact.getType().isAir()) {
             return null;
         }
@@ -132,7 +183,7 @@ public final class ItemResolver {
         if (spec.getKind() == ItemKind.VANILLA) {
             return new RecipeChoice.MaterialChoice(spec.getMaterial());
         }
-        ItemStack item = buildItem(spec);
+        ItemStack item = buildPreview(spec);
         if (item == null || item.getType().isAir()) {
             return null;
         }
@@ -140,40 +191,26 @@ public final class ItemResolver {
     }
 
     public boolean matches(ItemStack itemStack, ItemSpec spec) {
-        if (itemStack == null || itemStack.getType().isAir() || spec == null) {
-            return false;
-        }
+        return matches(itemStack, spec, new IdentityHashMap<>());
+    }
 
-        return switch (spec.getKind()) {
-            case VANILLA -> itemStack.getType() == spec.getMaterial();
-            case MMOITEMS -> {
-                if (spec.getMatchMode() == MatchMode.EXACT || spec.getMatchMode() == MatchMode.SIMILAR) {
-                    ItemStack target = buildItem(spec);
-                    if (target == null) {
-                        yield false;
-                    }
-                    target.setAmount(itemStack.getAmount());
-                    yield spec.getMatchMode() == MatchMode.EXACT
-                            ? itemStack.equals(target)
-                            : itemStack.isSimilar(target);
-                }
-                Optional<MMOItemsHook.MmoIdentity> identity = mmoItemsHook.readIdentity(itemStack);
-                yield identity
-                        .filter(value -> value.type().equalsIgnoreCase(spec.getMmoType()) && value.id().equalsIgnoreCase(spec.getMmoId()))
-                        .isPresent();
-            }
-            case ITEMSTACK -> {
-                ItemStack target = buildItem(spec);
-                if (target == null) {
-                    yield false;
-                }
-                target.setAmount(itemStack.getAmount());
-                if (spec.getMatchMode() == MatchMode.EXACT) {
-                    yield itemStack.equals(target);
-                }
-                yield itemStack.isSimilar(target);
-            }
-        };
+    private boolean matches(ItemStack itemStack, ItemSpec spec,
+            Map<ItemStack, Optional<MMOItemsHook.MmoIdentity>> identities) {
+        if (itemStack == null || itemStack.getType().isAir() || spec == null) return false;
+        if (spec.getKind() == ItemKind.VANILLA) return itemStack.getType() == spec.getMaterial();
+        if (spec.getKind() == ItemKind.MMOITEMS) {
+            Optional<MMOItemsHook.MmoIdentity> identity = identities.computeIfAbsent(itemStack, mmoItemsHook::readIdentity);
+            if (identity.isEmpty() || !identity.get().type().equalsIgnoreCase(spec.getMmoType())
+                    || !identity.get().id().equalsIgnoreCase(spec.getMmoId())) return false;
+            if (spec.getMatchMode() != MatchMode.EXACT && spec.getMatchMode() != MatchMode.SIMILAR) return true;
+        }
+        ItemStack target = reference(spec);
+        if (target == null) return false;
+        if (spec.getMatchMode() != MatchMode.EXACT) return itemStack.isSimilar(target);
+        // Do not mutate the shared reference or the player's ingredient.
+        ItemStack comparison = target.clone();
+        comparison.setAmount(itemStack.getAmount());
+        return itemStack.equals(comparison);
     }
 
     public String describe(ItemStack itemStack) {
