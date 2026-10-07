@@ -1,6 +1,14 @@
-# MDVRecetas 0.6.16
+# MDVRecetas 0.6.22
 
 Motor de recetas custom para MDVCRAFT.
+
+## Nuevo en 0.6.22
+
+- La firma de un objeto fabricado conserva una sola copia tras reparar con un consumible de MMOItems.
+- Se reconoce la firma aunque MMOItems cambie los códigos de color de su lore.
+- Las copias duplicadas de la firma se consolidan durante la siguiente reparación o reconstrucción compatible del objeto.
+- Se conservan el creador original y el resto del lore del resultado de MMOItems.
+- No requiere cambios de configuración. Consulta `UPDATE_0.6.22_FIRMA.md` para instalar y verificar.
 
 ## Nuevo en 0.6.16
 

@@ -60,7 +60,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.editorGuiManager = new EditorGuiManager(this, recipeManager, itemResolver, mdvSocialHook);
 
         int loaded = recipeManager.reloadRecipes();
-        getLogger().info("MDVRecetas 0.6.20 enabled. Recipes: " + loaded);
+        getLogger().info("MDVRecetas 0.6.22 enabled. Recipes: " + loaded);
 
         getServer().getPluginManager().registerEvents(new RecipeCraftListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
         getServer().getPluginManager().registerEvents(new CookingXpListener(this, forjadorXpService, recipeSignatureService, forjadorModifierService), this);
@@ -68,7 +68,7 @@ public final class MDVRecetasPlugin extends JavaPlugin {
         this.mmoItemsGemCompatibilityService = new MMOItemsGemCompatibilityService(
                 mmoItemsHook, recipeSignatureService, forjadorModifierService);
         getServer().getPluginManager().registerEvents(mmoItemsGemCompatibilityService, this);
-        getLogger().info("MMOItems gem/signature compatibility registered.");
+        getLogger().info("MMOItems consumable/signature compatibility registered.");
         getServer().getPluginManager().registerEvents(recipeGuiManager, this);
         if (bedrockRecipeMenuManager != null) {
             getServer().getPluginManager().registerEvents(bedrockRecipeMenuManager, this);

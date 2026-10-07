@@ -40,17 +40,20 @@ public final class RecipeSignatureService {
         }
 
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        if (!pdc.has(creatorUuidKey, PersistentDataType.STRING)) {
+        String creatorUuid = pdc.get(creatorUuidKey, PersistentDataType.STRING);
+        if (creatorUuid == null || creatorUuid.isBlank()) {
             pdc.set(creatorUuidKey, PersistentDataType.STRING, player.getUniqueId().toString());
             pdc.set(creatorNameKey, PersistentDataType.STRING, player.getName());
             pdc.set(recipeIdKey, PersistentDataType.STRING, recipeId == null ? "" : recipeId);
-
-            List<String> lore = meta.hasLore() && meta.getLore() != null
-                    ? new ArrayList<>(meta.getLore())
-                    : new ArrayList<>();
-            appendSignatureIfMissing(lore, signatureLines(player.getName(), recipeId));
-            meta.setLore(lore);
         }
+
+        String creatorName = pdc.get(creatorNameKey, PersistentDataType.STRING);
+        String originalRecipeId = pdc.get(recipeIdKey, PersistentDataType.STRING);
+        List<String> lore = meta.hasLore() && meta.getLore() != null
+                ? new ArrayList<>(meta.getLore())
+                : new ArrayList<>();
+        upsertSignature(lore, signatureLines(creatorName, originalRecipeId));
+        meta.setLore(lore);
 
         item.setItemMeta(meta);
         return item;
@@ -77,7 +80,7 @@ public final class RecipeSignatureService {
 
     /**
      * Restores the MDVRecetas signature after MMOItems rebuilds an item for
-     * any reason, including Revision ID changes, gem insertion and gem removal.
+     * any reason, including consumable repairs, Revision ID changes and gems.
      */
     public ItemStack restoreAfterMmoItemsMutation(ItemStack oldItem, ItemStack revisedItem) {
         if (oldItem == null || oldItem.getType().isAir()
@@ -114,29 +117,77 @@ public final class RecipeSignatureService {
         List<String> lore = newMeta.hasLore() && newMeta.getLore() != null
                 ? new ArrayList<>(newMeta.getLore())
                 : new ArrayList<>();
-        appendSignatureIfMissing(lore, signatureLines(creatorName, recipeId));
+        upsertSignature(lore, signatureLines(creatorName, recipeId));
         newMeta.setLore(lore);
 
         restored.setItemMeta(newMeta);
         return restored;
     }
 
-    private void appendSignatureIfMissing(List<String> lore, List<String> signature) {
-        String marker = lastNonBlank(signature);
-        if (marker != null && lore.contains(marker)) {
+    private void upsertSignature(List<String> lore, List<String> signature) {
+        List<String> normalizedSignature = signature.stream().map(this::signatureText).toList();
+        int firstText = 0;
+        while (firstText < normalizedSignature.size() && normalizedSignature.get(firstText).isEmpty()) {
+            firstText++;
+        }
+        // A block containing only spacers has no safe marker to identify in lore.
+        if (firstText == normalizedSignature.size()) {
             return;
         }
-        lore.addAll(signature);
+        int endText = normalizedSignature.size();
+        while (normalizedSignature.get(endText - 1).isEmpty()) {
+            endText--;
+        }
+
+        List<String> cleaned = new ArrayList<>(lore.size());
+        int insertionIndex = -1;
+        int lastCopied = 0;
+        for (int i = 0; i < lore.size();) {
+            if (!matchesSignature(lore, i, normalizedSignature, firstText, endText)) {
+                i++;
+                continue;
+            }
+
+            // MMOItems can change legacy color casing, add resets, or omit edge
+            // spacers. Match the whole textual block; never deduplicate other lore.
+            int start = i;
+            for (int spacer = 0; spacer < firstText && start > lastCopied
+                    && signatureText(lore.get(start - 1)).isEmpty(); spacer++) {
+                start--;
+            }
+            int end = i + endText - firstText;
+            for (int spacer = endText; spacer < signature.size() && end < lore.size()
+                    && signatureText(lore.get(end)).isEmpty(); spacer++) {
+                end++;
+            }
+            cleaned.addAll(lore.subList(lastCopied, start));
+            if (insertionIndex < 0) {
+                insertionIndex = cleaned.size();
+            }
+            lastCopied = end;
+            i = end;
+        }
+        cleaned.addAll(lore.subList(lastCopied, lore.size()));
+        cleaned.addAll(insertionIndex < 0 ? cleaned.size() : insertionIndex, signature);
+        lore.clear();
+        lore.addAll(cleaned);
     }
 
-    private String lastNonBlank(List<String> lines) {
-        for (int i = lines.size() - 1; i >= 0; i--) {
-            String line = lines.get(i);
-            if (line != null && !ColorUtil.stripColor(line).trim().isEmpty()) {
-                return line;
+    private boolean matchesSignature(List<String> lore, int index, List<String> signature,
+                                     int firstText, int endText) {
+        if (index + endText - firstText > lore.size()) {
+            return false;
+        }
+        for (int i = firstText; i < endText; i++) {
+            if (!signature.get(i).equals(signatureText(lore.get(index + i - firstText)))) {
+                return false;
             }
         }
-        return null;
+        return true;
+    }
+
+    private String signatureText(String line) {
+        return line == null ? "" : ColorUtil.stripColor(line).trim();
     }
 
     private List<String> signatureLines(String playerName, String recipeId) {

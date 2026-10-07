@@ -15,7 +15,8 @@ import java.util.Optional;
 
 /**
  * Preserves MDVRecetas metadata when MMOItems replaces an ItemStack after
- * applying or removing a gem. MMOItems performs these item-on-item operations
+ * applying a consumable (including repair) or applying/removing a gem.
+ * MMOItems performs these item-on-item operations
  * through InventoryClickEvent and writes the rebuilt result into currentItem.
  *
  * The original crafted item is captured before MMOItems handles the click. At
